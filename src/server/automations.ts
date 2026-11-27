@@ -1,5 +1,5 @@
 import { createRoute, z, type OpenAPIHono } from "@hono/zod-openapi";
-import { get, query, run } from "./db.js";
+import { get, onVercel, query, run } from "./db.js";
 import { getSettings, type ShopSettings } from "./settings.js";
 import { addDays, isValidTimeZone, TIME, wallClock, weekdayOf } from "./shoptime.js";
 import { ensureToken, servicesOf } from "./clientbooking.js";
@@ -52,6 +52,28 @@ const MAX_BEFORE_AFTER = 60 * 24 * 30;
 const QUIET_BEFORE_START = 10 * 60;
 /** How late a routine may still act after its moment, when the server was busy or down. */
 const GRACE = { daily: 2 * 3600, before: 3600, after: 12 * 3600 };
+
+
+/**
+ * The longest wait between two timer runs, in seconds. The server runs the
+ * timer every minute. On Vercel's Hobby plan it runs every 15 minutes, up to
+ * 15 minutes late. Set TICK_GAP_MINUTES when your schedule is different.
+ */
+export function tickGap(): number {
+  const raw = (process.env.TICK_GAP_MINUTES ?? "").trim();
+  const minutes = raw === "" ? NaN : Number(raw);
+  if (Number.isFinite(minutes) && minutes >= 1) return Math.min(minutes, 120) * 60;
+  return onVercel() ? 30 * 60 : 60;
+}
+
+/**
+ * How early a "before" reminder may go out, in seconds. A reminder can be sent
+ * from its moment until 10 minutes before the visit. When that time is shorter
+ * than the wait between timer runs, a run could miss it. So it may go early.
+ */
+export function earlyBy(leadSeconds: number, gap: number = tickGap()): number {
+  return Math.max(0, gap - (leadSeconds - QUIET_BEFORE_START));
+}
 
 const DailySchema = z.object({
   time: z.string().regex(TIME, "Use a time like 08:00."),
@@ -441,12 +463,14 @@ async function runAround(row: Row, settings: ShopSettings, now: number): Promise
   const span = Math.ceil(config.data.minutes / 1440) + 1;
   const armed = savedMoment(row.armed_at, settings.timezone);
   const filters = filtersOf(row);
+  const early = before ? earlyBy(offset) : 0;
   const apts = before ? await aptsBetween(today, addDays(today, span)) : await aptsBetween(addDays(today, -span - 1), today);
 
   for (const apt of apts) {
     const start = at(apt.scheduled_date, apt.start_time);
     const moment = before ? start - offset : Math.max(at(apt.scheduled_date, apt.end_time), start) + offset;
-    if (now < moment || now - moment > (before ? GRACE.before : GRACE.after)) continue;
+    const due = before ? moment - early : moment;
+    if (now < due || now - moment > (before ? GRACE.before : GRACE.after)) continue;
     if (armed > moment) continue;
     if (before) {
       if (now > start - QUIET_BEFORE_START) continue;

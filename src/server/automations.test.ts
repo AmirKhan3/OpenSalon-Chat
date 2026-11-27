@@ -315,6 +315,56 @@ test("no reminder in the last 10 minutes before a visit, and none shorter than 1
   assert.match(tooShort.body.error, /at least 15 minutes/);
 });
 
+test("a short reminder goes out early when the timer runs rarely, and only once", async () => {
+  await allOff();
+  await make({ trigger: "before_appointment", trigger_config: { minutes: 15 } });
+  await visit({ date: MON, start: "12:05", end: "12:35" });
+  process.env.TICK_GAP_MINUTES = "30";
+  try {
+    // The reminder can be sent from 11:50 to 11:55. Runs at 11:45 and 12:00 both miss that.
+    clock(MON, "11:19");
+    await auto.tick();
+    assert.equal(sent.length, 0); // more than one wait early: a later run still comes in time
+    clock(MON, "11:45");
+    await auto.tick();
+    assert.equal(sent.length, 1);
+    clock(MON, "11:52");
+    await auto.tick();
+    assert.equal(sent.length, 1);
+  } finally {
+    delete process.env.TICK_GAP_MINUTES;
+  }
+});
+
+test("a reminder is on time when the timer runs every minute, and a long one is never early", async () => {
+  await allOff();
+  await make({ trigger: "before_appointment", trigger_config: { minutes: 15 } });
+  await visit({ date: MON, start: "12:05", end: "12:35" });
+  clock(MON, "11:45");
+  await auto.tick();
+  assert.equal(sent.length, 0);
+  clock(MON, "11:50");
+  await auto.tick();
+  assert.equal(sent.length, 1);
+
+  assert.equal(auto.tickGap(), 60);
+  assert.equal(auto.earlyBy(15 * 60, 60), 0);
+  assert.equal(auto.earlyBy(15 * 60, 30 * 60), 25 * 60);
+  assert.equal(auto.earlyBy(40 * 60, 30 * 60), 0);
+  assert.equal(auto.earlyBy(24 * 3600, 30 * 60), 0);
+  process.env.VERCEL = "1";
+  try {
+    assert.equal(auto.tickGap(), 30 * 60);
+    process.env.TICK_GAP_MINUTES = "1";
+    assert.equal(auto.tickGap(), 60);
+    process.env.TICK_GAP_MINUTES = "nonsense";
+    assert.equal(auto.tickGap(), 30 * 60);
+  } finally {
+    delete process.env.VERCEL;
+    delete process.env.TICK_GAP_MINUTES;
+  }
+});
+
 test("the thank-you text waits for the visit to be completed", async () => {
   const all = await builtins();
   await db.run("UPDATE automations SET enabled = 0");

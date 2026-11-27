@@ -17,7 +17,7 @@
   },
   "schedules": {
     "tick": {
-      "schedule": "* * * * *",
+      "schedule": "*/15 * * * *",
       "function": "api/tick"
     }
   },
