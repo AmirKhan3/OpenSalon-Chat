@@ -203,7 +203,7 @@ Tolly also runs on Vercel. [vercel.json](vercel.json) holds the whole setup:
 
 - `pnpm build` makes the web app. Vercel serves it as static files.
 - [api/index.ts](api/index.ts) is one function for all of `/api/*`.
-- [api/tick.ts](api/tick.ts) is a private function. The schedule `tick` runs it every minute. It releases unpaid holds, runs the automations, and cleans up.
+- [api/tick.ts](api/tick.ts) is a private function. The schedule `tick` runs it every 15 minutes. It releases unpaid holds, runs the automations, and cleans up.
 
 Steps:
 
@@ -225,7 +225,7 @@ Steps:
 
 Good to know:
 
-- **The schedule runs every minute. That needs a Pro plan.** On Hobby, a schedule can run every 15 minutes at most, and the deploy may fail. Change `schedule` in `vercel.json` to `*/15 * * * *` there. Reminders and the release of unpaid holds are then up to 15 minutes late (more with Vercel's jitter).
+- **The schedule runs every 15 minutes.** That is the most the Hobby plan allows, and Vercel may start a run up to 15 minutes late. Daily routines and the release of unpaid holds can be that late. A short reminder (under 40 minutes before a visit) may go out up to 25 minutes early, so it is never missed. On a Pro plan, set `schedule` in `vercel.json` to `* * * * *` and set `TICK_GAP_MINUTES=1`.
 - Leave `TRUST_PROXY` and `CRON_SECRET` empty.
 - Tolly creates its tables on the first request.
 - Bookings are safe when many functions run at once: every booking write takes a lock in the database. The login limit and the chat limit are in the database too.
@@ -285,7 +285,7 @@ Tests use an in-memory database, a fake Stripe, a fake SMS provider, and a mock 
 - Node.js 22+, pnpm, TypeScript.
 - Server: Hono + @hono/zod-openapi on Node. The OpenAPI document is at `/api/openapi.json`.
 - Database: Postgres through `pg`, or embedded PGlite when `DATABASE_URL` is empty.
-- Web: Preact + Vite + Tailwind + shadcn/ui. Two pages: the dashboard (`index.html`) and the booking page (`book.html`).
+- Web: Preact + Vite + Tailwind + shadcn/ui, with [Konsta UI](https://konstaui.com/) for phone screens (the bottom tab bar, the More screen and the booking form). Two pages: the dashboard (`index.html`) and the booking page (`book.html`).
 - AI: Vercel AI SDK with tools.
 
 ## License

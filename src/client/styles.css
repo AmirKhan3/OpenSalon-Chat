@@ -1,6 +1,12 @@
 @import "tailwindcss";
+@import "konsta/react/theme.css";
 
 @custom-variant dark (&:is(.dark *));
+
+/* Konsta UI takes its main color from here. It matches --primary below. */
+@theme {
+  --color-brand-primary: #4a44b2;
+}
 
 @theme inline {
   --color-background: var(--background);

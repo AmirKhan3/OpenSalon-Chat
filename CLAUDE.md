@@ -32,7 +32,8 @@ Client -> Tolly (agent) -> Barber. Tolly answers first. Tolly gives the chat to 
 - Node.js 22+, pnpm, TypeScript.
 - Server: Hono + @hono/zod-openapi on Node (@hono/node-server).
 - Database: Postgres through `pg` in production. Embedded PGlite in development and tests when DATABASE_URL is empty.
-- Web: Preact + Vite + Tailwind + shadcn/ui. Two pages: staff dashboard (index.html) and client booking page (book.html at /book).
+- Web: Preact + Vite + Tailwind + shadcn/ui, with Konsta UI (konsta/react, through preact/compat) for phone screens. Two pages: staff dashboard (index.html) and client booking page (book.html at /book).
+- Barbers mostly use the dashboard on a phone. Build phone-first: bottom tab bar (mobile-nav.tsx), large touch targets. The sidebar is for desktop only.
 - AI: Vercel AI SDK with tools. Model from AGENT_MODEL, through the AI Gateway (AI_GATEWAY_API_KEY) or Anthropic directly (ANTHROPIC_API_KEY).
 - Tests: node --test with tsx. Use PGlite in memory, a fake Stripe, a fake SMS provider, and a mock AI model. Tests must not need the network.
 

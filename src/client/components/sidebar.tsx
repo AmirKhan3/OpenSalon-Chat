@@ -1,8 +1,6 @@
 import { useEffect, useState } from "preact/hooks";
 import { useApp } from "../context";
-import { Scissors, Menu, LayoutDashboard, CalendarDays, Clock, Users, UserCog, Sparkles, Package, LogOut, Settings, Inbox as InboxIcon, Bot, Zap, BarChart3 } from "lucide-preact";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Scissors, LayoutDashboard, CalendarDays, Clock, Users, UserCog, Sparkles, Package, LogOut, Settings, Inbox as InboxIcon, Bot, Zap, BarChart3 } from "lucide-preact";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
@@ -10,7 +8,7 @@ import type { View } from "../types";
 import { api } from "../api";
 
 /** How many chats wait for a barber or have new messages. */
-function useInboxCount(): { waiting: number; needsYou: boolean } {
+export function useInboxCount(): { waiting: number; needsYou: boolean } {
   const [count, setCount] = useState({ waiting: 0, needsYou: false });
   useEffect(() => {
     let stop = false;
@@ -110,44 +108,10 @@ function SidebarContent({ currentView, onNavigate, onLogout }: { currentView: Vi
 }
 
 export function Sidebar({ currentView, onLogout }: { currentView: View; onLogout?: () => void }) {
-  const [open, setOpen] = useState(false);
-  const { navigate, stats } = useApp();
-
-  useEffect(() => {
-    const desktop = window.matchMedia("(min-width: 768px)");
-    const closeOnDesktop = () => { if (desktop.matches) setOpen(false); };
-    const closeOnHistory = () => setOpen(false);
-    desktop.addEventListener("change", closeOnDesktop);
-    window.addEventListener("popstate", closeOnHistory);
-    return () => {
-      desktop.removeEventListener("change", closeOnDesktop);
-      window.removeEventListener("popstate", closeOnHistory);
-    };
-  }, []);
-
+  // Phones use the tab bar at the bottom (mobile-nav.tsx). This is the desktop menu.
   return (
-    <>
-      <aside className="hidden w-60 shrink-0 border-r md:block print:hidden">
-        <SidebarContent currentView={currentView} onLogout={onLogout} />
-      </aside>
-      <header className="flex shrink-0 items-center justify-between gap-3 border-b bg-sidebar px-4 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] md:hidden print:hidden">
-        <span className="flex items-center gap-2 text-sm font-semibold">
-          <Scissors className="h-4 w-4 text-primary" />
-          Tolly
-        </span>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button variant="outline" className="min-h-11" aria-label="Open navigation menu">
-              <Menu className="h-4 w-4" />
-              Menu
-            </Button>
-          </DialogTrigger>
-          <DialogContent aria-describedby={undefined} className="left-0 top-0 flex h-dvh w-80 max-w-[calc(100%-2rem)] translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0 pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] sm:rounded-none [&>button]:flex [&>button]:h-11 [&>button]:w-11 [&>button]:items-center [&>button]:justify-center [&>button]:right-2 [&>button]:top-3">
-            <DialogTitle className="sr-only">Navigation menu</DialogTitle>
-            <SidebarContent currentView={currentView} onNavigate={() => setOpen(false)} onLogout={onLogout} />
-          </DialogContent>
-        </Dialog>
-      </header>
-    </>
+    <aside className="hidden w-60 shrink-0 border-r md:block print:hidden">
+      <SidebarContent currentView={currentView} onLogout={onLogout} />
+    </aside>
   );
 }

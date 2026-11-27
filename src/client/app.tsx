@@ -20,6 +20,8 @@ import { AutomationsPage } from "./components/automations";
 import { AssistantPage } from "./components/assistant";
 import { ReportsPage } from "./components/reports";
 import { ErrorBanner } from "./components/error-banner";
+import { BookFab, MobileNav, MoreMenu } from "./components/mobile-nav";
+import { CreateAppointment } from "./components/create-appointment";
 
 interface AuthStatus { logged_in: boolean; login_required: boolean }
 
@@ -91,6 +93,11 @@ function Shell({ onLogout }: { onLogout?: () => void }) {
     }
   }, [view, id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The round "Book" button on phones opens the booking form from the Today screen.
+  // The calendar and the appointment list have their own "New booking" button.
+  const [booking, setBooking] = useState(false);
+  const canBook = !id && view === "dashboard";
+
   const renderMain = () => {
     if (view === "appointments" && id && appState.selectedAppointment) return <AppointmentDetail />;
     if (view === "clients" && id && appState.selectedClient) return <ClientDetail />;
@@ -106,6 +113,7 @@ function Shell({ onLogout }: { onLogout?: () => void }) {
       case "automations": return <AutomationsPage />;
       case "reports": return <ReportsPage />;
       case "settings": return <SettingsPage />;
+      case "more": return <MoreMenu onLogout={onLogout} />;
       default: return <Dashboard />;
     }
   };
@@ -114,7 +122,7 @@ function Shell({ onLogout }: { onLogout?: () => void }) {
     <AppContext.Provider value={appState}>
       <div className="flex h-dvh flex-col overflow-hidden pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] md:flex-row print:block print:h-auto print:overflow-visible">
         <Sidebar currentView={view} onLogout={onLogout} />
-        <main className="min-h-0 min-w-0 flex-1 overflow-auto bg-background print:overflow-visible">
+        <main className="min-h-0 min-w-0 flex-1 overflow-auto bg-background pb-16 pt-[env(safe-area-inset-top)] md:pb-0 md:pt-0 print:overflow-visible print:p-0">
           {appState.loading ? (
             <div className="flex h-full items-center justify-center text-muted-foreground">Loading...</div>
           ) : (
@@ -122,6 +130,9 @@ function Shell({ onLogout }: { onLogout?: () => void }) {
           )}
         </main>
       </div>
+      <MobileNav currentView={view} />
+      {canBook && !appState.loading && !booking && <BookFab onClick={() => setBooking(true)} />}
+      {booking && <CreateAppointment onClose={() => setBooking(false)} />}
       <ErrorBanner />
     </AppContext.Provider>
   );

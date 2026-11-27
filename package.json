@@ -32,6 +32,7 @@
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "hono": "^4.6.0",
+    "konsta": "^5.5.0",
     "lucide-preact": "^0.575.0",
     "lucide-react": "^1.7.0",
     "pg": "^8.23.1",

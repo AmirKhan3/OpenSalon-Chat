@@ -17,6 +17,7 @@ import { registerPublicRoutes } from "./public.js";
 import { registerStripeRoutes, settlePrepayOnStaffChange } from "./prepay.js";
 import { registerAuthRoutes, requireStaff } from "./auth.js";
 import { registerCronRoutes } from "./cron.js";
+import { suggestClients, clientsNamed } from "./clientsuggest.js";
 
 const app = new OpenAPIHono({
   // A request that fails validation gets 400 { error }.
@@ -720,6 +721,24 @@ const getAllClients = createRoute({
 
 app.openapi(getAllClients, async (c) => {
   const clients = await query<{ id: number; name: string }>("SELECT id, name FROM clients ORDER BY name ASC");
+  return c.json({ clients }, 200);
+});
+
+const suggestClientsRoute = createRoute({
+  method: "get",
+  path: "/api/clients/suggest",
+  request: { query: z.object({ q: z.string().max(200).optional(), exact: z.enum(["1"]).optional() }) },
+  responses: {
+    200: {
+      description: "Up to 3 customers for the booking form: recent ones, or ones that match the typed name. With exact=1: only customers with that whole name",
+      content: { "application/json": { schema: z.object({ clients: z.array(z.object({ id: z.number().int(), name: z.string(), phone: z.string() })) }) } },
+    },
+  },
+});
+
+app.openapi(suggestClientsRoute, async (c) => {
+  const { q = "", exact } = c.req.valid("query");
+  const clients = exact ? await clientsNamed(q) : await suggestClients(q);
   return c.json({ clients }, 200);
 });
 

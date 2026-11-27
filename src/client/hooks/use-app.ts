@@ -224,6 +224,14 @@ export function useAppState(isAgent: boolean, navigate: (to: string) => void): A
     await Promise.all([fetchStats(), fetchLookups()]);
   }, [clientsPag, clientsSearch, fetchClients, fetchStats, fetchLookups]);
 
+  /** Adds a customer and gives the new record back. The booking form uses it for a first-time customer. */
+  const createClient = useCallback(async (data: { name: string; phone?: string }) => {
+    const res = await api<{ client: Client }>("POST", "/api/clients", data);
+    // The customer exists now. A failed refresh must not hide that from the caller.
+    await Promise.all([fetchClients(clientsPag, clientsSearch), fetchStats(), fetchLookups()]).catch(() => {});
+    return res.client;
+  }, [clientsPag, clientsSearch, fetchClients, fetchStats, fetchLookups]);
+
   const updateClient = useCallback(async (id: number, data: Partial<Client>) => {
     await api("PUT", `/api/clients/${id}`, data);
     await fetchClients(clientsPag, clientsSearch);
@@ -322,7 +330,7 @@ export function useAppState(isAgent: boolean, navigate: (to: string) => void): A
     calendarAppointments, calendarBlocked, calendarDate, setCalendarDate,
     addBlockedSlot, deleteBlockedSlot,
     clients, clientsPag, setClientsPage, clientsSearch, setClientsSearch,
-    addClient, updateClient, deleteClient,
+    addClient, createClient, updateClient, deleteClient,
     selectedClient, selectedClientAppointments, selectClient,
     staffMembers, addStaff, updateStaff, deleteStaff,
     services, addService, updateService, deleteService,

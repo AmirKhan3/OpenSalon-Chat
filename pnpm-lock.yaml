@@ -71,6 +71,9 @@ importers:
       hono:
         specifier: ^4.6.0
         version: 4.12.10
+      konsta:
+        specifier: ^5.5.0
+        version: 5.5.0
       lucide-preact:
         specifier: ^0.575.0
         version: 0.575.0(preact@10.29.1)
@@ -1547,6 +1550,10 @@ packages:
   kolorist@1.8.0:
     resolution: {integrity: sha512-Y+60/zizpJ3HRH8DCss+q95yr6145JXZo46OTpFvDZWLfRCE4qChOyk1b26nMaNpfHHgxagk9dXT5OP0Tfe+dQ==}
 
+  konsta@5.5.0:
+    resolution: {integrity: sha512-YMhVJeDLgGZS+34eeiiRD0Xc8zoKRyvgStYbFBUYBWGhafB9U5Q8Q9JYTZF17oe7N6znE1zAuQypLCJ5moFa6Q==}
+    engines: {node: '>= 4.7.0'}
+
   lightningcss-android-arm64@1.32.0:
     resolution: {integrity: sha512-YK7/ClTt4kAK0vo6w3X+Pnm0D2cf2vPHbhOXdoNti1Ga0al1P4TBZhwjATvjNwLEBCnKvjJc2jQgHXH0NEwlAg==}
     engines: {node: '>= 12.0.0'}
@@ -1854,6 +1861,9 @@ packages:
 
   tailwind-merge@2.6.1:
     resolution: {integrity: sha512-Oo6tHdpZsGpkKG88HJ8RR1rg/RdnEkQEfMoEk2x1XRI3F1AxeU+ijRXpiVUF4UbLfcxxRGw6TbUINKYdWVsQTQ==}
+
+  tailwind-merge@3.7.1:
+    resolution: {integrity: sha512-v7y4BV4FUlO8exj/4M5UXKeoowDiuugVUg3tkMNIyOUCOHy5xp8+5aWQeXCtZ2491sUV1YPsVeM9EveZ6/xuZQ==}
 
   tailwindcss@4.2.2:
     resolution: {integrity: sha512-KWBIxs1Xb6NoLdMVqhbhgwZf2PGBpPEiwOqgI4pFIYbNTfBXiKYyWoTsXgBQ9WFg/OlhnvHaY+AEpW7wSmFo2Q==}
@@ -3151,6 +3161,10 @@ snapshots:
 
   kolorist@1.8.0: {}
 
+  konsta@5.5.0:
+    dependencies:
+      tailwind-merge: 3.7.1
+
   lightningcss-android-arm64@1.32.0:
     optional: true
 
@@ -3414,6 +3428,8 @@ snapshots:
   supports-color@10.2.2: {}
 
   tailwind-merge@2.6.1: {}
+
+  tailwind-merge@3.7.1: {}
 
   tailwindcss@4.2.2: {}
 

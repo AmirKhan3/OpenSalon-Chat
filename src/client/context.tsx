@@ -53,6 +53,8 @@ export interface AppContextValue {
   clientsSearch: string;
   setClientsSearch: (s: string) => void;
   addClient: (data: Partial<Client>) => Promise<void>;
+  /** Adds a customer and gives the new record back. */
+  createClient: (data: { name: string; phone?: string }) => Promise<Client>;
   updateClient: (id: number, data: Partial<Client>) => Promise<void>;
   deleteClient: (id: number) => Promise<void>;
   selectedClient: Client | null;
