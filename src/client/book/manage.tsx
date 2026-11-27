@@ -1,4 +1,4 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useMemo, useState } from "preact/hooks";
 import { Clock, MapPin } from "lucide-preact";
 import { request, type BookingData } from "./api";
 import { Notice, Page, PrimaryButton } from "./app";
@@ -14,6 +14,15 @@ const STATUS: Record<string, { label: string; tone: string }> = {
   no_show: { label: "Missed", tone: "text-danger border-danger/40" },
 };
 
+/** "3:45 PM" in the shop's time. */
+function holdTime(iso: string, timezone: string): string {
+  try {
+    return new Date(iso).toLocaleTimeString("en-US", { timeZone: timezone, hour: "numeric", minute: "2-digit" });
+  } catch {
+    return "";
+  }
+}
+
 /** /book/manage/:token — the client's own booking: details, status, cancel. */
 export function ManagePage({ token }: { token: string }) {
   const [data, setData] = useState<BookingData | null>(null);
@@ -23,11 +32,22 @@ export function ManagePage({ token }: { token: string }) {
   const [cancelError, setCancelError] = useState<string | null>(null);
   const path = `/api/public/bookings/${encodeURIComponent(token)}`;
 
+  // Stripe sends the client back here with ?paid=1. The payment can take a moment to arrive.
+  const justPaid = useMemo(() => new URLSearchParams(window.location.search).get("paid") === "1", []);
+  const [checks, setChecks] = useState(0);
+
   useEffect(() => {
     request<BookingData>("GET", path)
       .then((d) => { setData(d); document.title = `Your booking - ${d.shop.name}`; })
       .catch((e: Error) => setError(e.message));
-  }, [path]);
+  }, [path, checks]);
+
+  const waitingForPayment = justPaid && checks < 15 && data?.booking.status === "pending";
+  useEffect(() => {
+    if (!waitingForPayment) return;
+    const timer = setTimeout(() => setChecks((n) => n + 1), 2000);
+    return () => clearTimeout(timer);
+  }, [waitingForPayment, checks, data]);
 
   const cancel = async () => {
     setBusy(true);
@@ -56,6 +76,9 @@ export function ManagePage({ token }: { token: string }) {
 
   const { booking, shop } = data;
   const status = STATUS[booking.status] ?? { label: booking.status, tone: "text-dim border-line" };
+  const prepay = booking.prepay;
+  const paid = formatPrice(prepay.amount);
+  const holdUntil = prepay.hold_expires_at ? holdTime(prepay.hold_expires_at, shop.timezone) : "";
 
   return (
     <Page shopName={shop.name}>
@@ -75,10 +98,36 @@ export function ManagePage({ token }: { token: string }) {
               <li key={i} className="flex justify-between"><span>{s.name}</span><span className="text-dim">{formatPrice(s.price)}</span></li>
             ))}
             <li className="flex justify-between border-t border-line pt-2 font-medium"><span>Total</span><span className="text-brass-2">{formatPrice(booking.total_price)}</span></li>
+            {prepay.status === "paid" && (
+              <>
+                <li className="flex justify-between text-ok"><span>Pre-paid</span><span>{paid}</span></li>
+                {booking.status !== "cancelled" && booking.total_price - prepay.amount > 0 && (
+                  <li className="flex justify-between text-dim"><span>Pay at the shop</span><span>{formatPrice(booking.total_price - prepay.amount)}</span></li>
+                )}
+              </>
+            )}
+            {prepay.status === "due" && <li className="flex justify-between text-dim"><span>Pre-pay to book</span><span>{paid}</span></li>}
           </ul>
           <p className="mt-3 flex justify-between text-dim"><span>Booking</span><span>{booking.reference}</span></p>
           {shop.address && <p className="mt-2 flex items-start gap-1.5 text-dim"><MapPin className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />{shop.address}</p>}
         </div>
+
+        {waitingForPayment && <p role="status" className="text-sm text-dim">Checking your payment...</p>}
+        {!waitingForPayment && justPaid && booking.status === "pending" && (
+          <p role="status" className="text-sm text-dim">Your payment has not arrived yet. This can take a minute. Reload this page to check again.</p>
+        )}
+        {!waitingForPayment && !justPaid && booking.status === "pending" && prepay.pay_url && (
+          <div className="space-y-2">
+            <PrimaryButton onClick={() => { window.location.assign(prepay.pay_url!); }}>Pre-pay {paid}</PrimaryButton>
+            <p className="text-sm text-dim">
+              Your time is not booked until you pay.{holdUntil ? ` We hold it until ${holdUntil}.` : ""}
+            </p>
+          </div>
+        )}
+        {prepay.status === "expired" && <p className="text-sm text-dim">The pre-pay was not paid in time, so this booking was cancelled.</p>}
+        {prepay.status === "refunded" && <p className="text-sm text-dim">Your pre-pay of {paid} was refunded. It can take a few days to show on your card.</p>}
+        {prepay.status === "refund_due" && <p className="text-sm text-dim">The shop will refund your pre-pay of {paid}.</p>}
+        {booking.status === "cancelled" && prepay.status === "paid" && <p className="text-sm text-dim">The pre-pay of {paid} was not refunded.</p>}
 
         {booking.status === "cancelled" && <PrimaryButton onClick={() => { window.location.href = "/book"; }}>Book a new visit</PrimaryButton>}
 
@@ -90,7 +139,12 @@ export function ManagePage({ token }: { token: string }) {
         {booking.can_cancel && confirming && (
           <div className="space-y-3 rounded-xl border border-danger/50 bg-panel p-4">
             <p className="font-medium text-cream">Cancel this booking?</p>
-            <p className="text-sm text-dim">Your time will open up for someone else.</p>
+            <p className="text-sm text-dim">
+              Your time will open up for someone else.
+              {prepay.status === "paid" && (prepay.refund_on_cancel
+                ? ` We will refund your pre-pay of ${paid}.`
+                : ` Your pre-pay of ${paid} will not be refunded, because the visit is less than ${prepay.refund_window_hours} hours away.`)}
+            </p>
             {cancelError && <Notice>{cancelError}</Notice>}
             <div className="grid grid-cols-2 gap-2">
               <button disabled={busy} onClick={() => setConfirming(false)} className="min-h-12 rounded-xl border border-line text-sm font-medium text-cream">Keep it</button>

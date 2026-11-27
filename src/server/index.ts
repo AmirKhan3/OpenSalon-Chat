@@ -7,6 +7,7 @@ import { oneAtATime } from "./lock.js";
 import { addMinutes, busyFor, nextIdentifier } from "./booking.js";
 import { registerSettingsRoutes } from "./settings.js";
 import { registerPublicRoutes } from "./public.js";
+import { registerStripeRoutes, settlePrepayOnStaffChange } from "./prepay.js";
 import { registerAuthRoutes, requireStaff } from "./auth.js";
 
 const app = new OpenAPIHono({
@@ -53,7 +54,7 @@ app.get("/api/health", (c) => c.json({ ok: true }));
 // Booking writes check for overlaps and then save. Run them one at a time,
 // so two requests at the same moment cannot both take the same slot.
 app.use("/api/*", async (c, next) => {
-  const write = c.req.method !== "GET" && /^\/api\/(appointments|blocked-slots|public\/bookings)(\/|$)/.test(c.req.path);
+  const write = c.req.method !== "GET" && /^\/api\/(appointments|blocked-slots|public\/bookings|stripe\/webhook)(\/|$)/.test(c.req.path);
   if (write) await oneAtATime(next);
   else await next();
 });
@@ -557,6 +558,10 @@ app.openapi(updateAppointment, async (c) => {
     || startTime !== existing.start_time || endTime !== existing.end_time;
   const status = body.status ?? existing.status;
   const restored = existing.status === "cancelled" && status !== "cancelled";
+  // "pending" means a client is paying the pre-pay. Staff cannot set it by hand.
+  if (status === "pending" && existing.status !== "pending") {
+    return c.json({ error: "Only an online booking that waits for its pre-pay can have this status." }, 400);
+  }
 
   // An existing deliberate overlap must not block notes, check-in, completion,
   // or cancellation. Restoring a cancelled booking occupies its slot again.
@@ -581,6 +586,7 @@ app.openapi(updateAppointment, async (c) => {
   }
   sets.push("updated_at = utc_now()");
   await run(`UPDATE appointments SET ${sets.join(", ")} WHERE id = ?`, [...params, id]);
+  await settlePrepayOnStaffChange(id, existing.status, status);
   return c.json({ ok: true }, 200);
 });
 
@@ -1177,5 +1183,6 @@ app.openapi(deleteProduct, async (c) => {
 
 registerSettingsRoutes(app);
 registerPublicRoutes(app);
+registerStripeRoutes(app);
 
 export default app;

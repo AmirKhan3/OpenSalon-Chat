@@ -9,6 +9,11 @@ export function setShopClock(fn?: () => Date): void {
   clock = fn ?? (() => new Date());
 }
 
+/** The real moment now (UTC inside). Tests can move it with setShopClock. */
+export function wallClock(): Date {
+  return clock();
+}
+
 export function isValidTimeZone(tz: string): boolean {
   if (!tz || tz.length > 64) return false;
   try {

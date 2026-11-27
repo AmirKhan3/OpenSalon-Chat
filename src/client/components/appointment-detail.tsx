@@ -87,6 +87,7 @@ export function AppointmentDetail() {
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground">Status</Label>
                   <select className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm" value={apt.status} onChange={(e) => handleStatusChange((e.target as HTMLSelectElement).value)}>
+                    {apt.status === "pending" && <option value="pending">Waiting for pre-pay</option>}
                     <option value="booked">Booked</option>
                     <option value="confirmed">Confirmed</option>
                     <option value="in_progress">In Progress</option>

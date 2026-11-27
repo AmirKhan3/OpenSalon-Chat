@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { ComponentChildren } from "preact";
 import { Check, ChevronLeft, Clock, MapPin, Scissors, User } from "lucide-preact";
-import { request, RequestError, type Barber, type BookingData, type Service, type ShopData, type Slot } from "./api";
+import { request, RequestError, type Availability, type Barber, type BookingData, type Service, type ShopData, type Slot } from "./api";
 import {
   bookableDates, dayNumber, formatDuration, formatPrice, formatTime, isPhone, longDate, shortMonth, shortWeekday, weekdayOf,
 } from "./dates";
@@ -66,6 +66,7 @@ function BookingFlow() {
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [result, setResult] = useState<BookingData | null>(null);
+  const [prepay, setPrepay] = useState(0); // what the client pays now, from the server
   const [notice, setNotice] = useState<string | null>(null);
 
   const load = () => {
@@ -148,16 +149,21 @@ function BookingFlow() {
         {step === "time" && (
           <TimeStep
             data={data} serviceIds={serviceIds} barberId={barberId} date={date} time={time}
-            onDate={(d) => { setDate(d); setTime(""); }} onTime={setTime} onNext={() => { setNotice(null); setStep("details"); }}
+            onDate={(d) => { setDate(d); setTime(""); }} onTime={setTime} onPrepay={setPrepay} onNext={() => { setNotice(null); setStep("details"); }}
           />
         )}
         {step === "details" && (
           <DetailsStep
-            summary={{ services: picked, barber, date, time, duration, price }}
+            summary={{ services: picked, barber, date, time, duration, price, prepay, refundHours: data.prepay.refund_window_hours, holdMinutes: data.prepay.hold_minutes }}
             onSubmit={async (details) => {
               const booked = await request<BookingData>("POST", "/api/public/bookings", {
                 ...details, date, time, service_ids: serviceIds, staff_id: barberId,
               });
+              if (booked.checkout_url) {
+                // Pre-pay: go to the Stripe payment page. It comes back to the booking page.
+                window.location.assign(booked.checkout_url);
+                await new Promise(() => undefined);
+              }
               setResult(booked);
               setStep("done");
             }}
@@ -275,7 +281,7 @@ function BarberStep({ barbers, selected, onPick }: { barbers: Barber[]; selected
 
 function TimeStep(props: {
   data: ShopData; serviceIds: number[]; barberId: number | null; date: string; time: string;
-  onDate: (date: string) => void; onTime: (time: string) => void; onNext: () => void;
+  onDate: (date: string) => void; onTime: (time: string) => void; onPrepay: (amount: number) => void; onNext: () => void;
 }) {
   const { data, date } = props;
   const dates = useMemo(() => bookableDates(data.today, data.shop.booking_window_days), [data]);
@@ -290,8 +296,8 @@ function TimeStep(props: {
     setError(null);
     const query = new URLSearchParams({ date, service_ids: props.serviceIds.join(",") });
     if (props.barberId !== null) query.set("staff_id", String(props.barberId));
-    request<{ slots: Slot[] }>("GET", `/api/public/availability?${query}`)
-      .then((r) => { if (live) setSlots(r.slots); })
+    request<Availability>("GET", `/api/public/availability?${query}`)
+      .then((r) => { if (live) { setSlots(r.slots); props.onPrepay(r.prepay_amount); } })
       .catch((e: Error) => { if (live) setError(e.message); });
     return () => { live = false; };
   }, [date, props.barberId, props.serviceIds.join(","), attempt]);
@@ -367,7 +373,11 @@ function TimeStep(props: {
   );
 }
 
-interface Summary { services: Service[]; barber: Barber | null; date: string; time: string; duration: number; price: number }
+interface Summary {
+  services: Service[]; barber: Barber | null; date: string; time: string; duration: number; price: number;
+  /** What the client pays now. 0: nothing. */
+  prepay: number; refundHours: number; holdMinutes: number;
+}
 
 function SummaryCard({ summary }: { summary: Summary }) {
   return (
@@ -382,6 +392,14 @@ function SummaryCard({ summary }: { summary: Summary }) {
           <li key={s.id} className="flex justify-between"><span>{s.name}</span><span className="text-dim">{formatPrice(s.price)}</span></li>
         ))}
         <li className="flex justify-between pt-1 font-medium"><span>Total</span><span className="text-brass-2">{formatPrice(summary.price)}</span></li>
+        {summary.prepay > 0 && (
+          <>
+            <li className="flex justify-between border-t border-line pt-2 font-medium text-cream"><span>Pre-pay now</span><span>{formatPrice(summary.prepay)}</span></li>
+            {summary.price - summary.prepay > 0 && (
+              <li className="flex justify-between text-dim"><span>Pay at the shop</span><span>{formatPrice(summary.price - summary.prepay)}</span></li>
+            )}
+          </>
+        )}
       </ul>
     </div>
   );
@@ -433,7 +451,17 @@ function DetailsStep(props: {
         <input className={field} value={email} onInput={(e) => setEmail(e.currentTarget.value)} type="email" autoComplete="email" maxLength={200} />
       </label>
       {error && <Notice>{error}</Notice>}
-      <PrimaryButton type="submit" disabled={busy}>{busy ? "Booking..." : "Book it"}</PrimaryButton>
+      {props.summary.prepay > 0 && (
+        <p className="text-sm text-dim">
+          You pay {formatPrice(props.summary.prepay)} now to book. We hold your time for {props.summary.holdMinutes} minutes while you pay.{" "}
+          {props.summary.refundHours > 0
+            ? `Cancel at least ${props.summary.refundHours} hours before your visit to get it back.`
+            : "Cancel any time before your visit to get it back."}
+        </p>
+      )}
+      <PrimaryButton type="submit" disabled={busy}>
+        {props.summary.prepay > 0 ? (busy ? "Opening payment..." : `Pre-pay ${formatPrice(props.summary.prepay)}`) : (busy ? "Booking..." : "Book it")}
+      </PrimaryButton>
     </form>
   );
 }

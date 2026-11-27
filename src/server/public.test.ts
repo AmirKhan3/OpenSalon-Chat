@@ -52,7 +52,7 @@ test("shop details: name, hours, services, barbers, and today in shop time", asy
   assert.equal(r.body.shop.timezone, "America/New_York");
   assert.equal(r.body.shop.hours.length, 7);
   assert.deepEqual(r.body.services.map((s: any) => s.name).sort(), ["Beard Trim", "Haircut"]);
-  assert.equal(r.body.services[0].prepay_amount, 0);
+  assert.equal(r.body.prepay.mode, "none");
   assert.deepEqual(r.body.barbers.map((b: any) => b.name), ["Dre", "Marcus"]);
   // Late evening in New York is still the same day there, though UTC has moved on.
   setShopClock(() => new Date("2026-03-03T03:30:00Z"));

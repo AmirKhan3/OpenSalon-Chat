@@ -1,6 +1,7 @@
 import { createRoute, z, type OpenAPIHono } from "@hono/zod-openapi";
 import { query } from "./db.js";
 import { isValidTimeZone, TIME } from "./shoptime.js";
+import { stripeConnected } from "./stripe.js";
 
 /**
  * Shop settings. They live in the `settings` table (one JSON value per key)
@@ -25,6 +26,16 @@ export const SettingsSchema = z.object({
   min_notice: z.number().int().min(0).max(60 * 24 * 14),
   /** How many days ahead a client can book. */
   booking_window_days: z.number().int().min(1).max(365),
+  /** What a client pays when they book online. Needs Stripe. */
+  prepay_mode: z.enum(["none", "fixed", "percent", "full"]),
+  /** Dollars, for the "fixed" mode. */
+  prepay_amount: z.number().min(0).max(10_000),
+  /** For the "percent" mode. */
+  prepay_percent: z.number().int().min(1).max(100),
+  /** A client who cancels at least this many hours before the visit gets the pre-pay back. */
+  refund_window_hours: z.number().int().min(0).max(24 * 30),
+  /** Minutes an unpaid booking holds its time. Stripe allows 30 minutes to 24 hours. */
+  hold_minutes: z.number().int().min(30, "The hold time must be at least 30 minutes.").max(23 * 60),
 }).openapi("Settings");
 
 export type ShopSettings = z.infer<typeof SettingsSchema>;
@@ -42,6 +53,11 @@ export function defaultSettings(): ShopSettings {
     slot_step: 30,
     min_notice: 60,
     booking_window_days: 30,
+    prepay_mode: "none",
+    prepay_amount: 10,
+    prepay_percent: 50,
+    refund_window_hours: 24,
+    hold_minutes: 30,
   };
 }
 
@@ -77,21 +93,24 @@ export async function saveSettings(patch: Partial<ShopSettings>): Promise<ShopSe
 
 const ErrorSchema = z.object({ error: z.string() });
 
+/** stripe_connected: false means pre-pay is off, whatever the mode says. */
+const SettingsResponse = z.object({ settings: SettingsSchema, stripe_connected: z.boolean() });
+
 const getRoute = createRoute({
   method: "get", path: "/api/settings", tags: ["Settings"], summary: "Shop settings",
-  responses: { 200: { description: "Settings", content: { "application/json": { schema: z.object({ settings: SettingsSchema }) } } } },
+  responses: { 200: { description: "Settings", content: { "application/json": { schema: SettingsResponse } } } },
 });
 
 const putRoute = createRoute({
   method: "put", path: "/api/settings", tags: ["Settings"], summary: "Change shop settings",
   request: { body: { content: { "application/json": { schema: SettingsSchema.partial() } }, required: true } },
   responses: {
-    200: { description: "Settings", content: { "application/json": { schema: z.object({ settings: SettingsSchema }) } } },
+    200: { description: "Settings", content: { "application/json": { schema: SettingsResponse } } },
     400: { description: "Bad request", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
 export function registerSettingsRoutes(app: OpenAPIHono): void {
-  app.openapi(getRoute, async (c) => c.json({ settings: await getSettings() }, 200));
-  app.openapi(putRoute, async (c) => c.json({ settings: await saveSettings(c.req.valid("json")) }, 200));
+  app.openapi(getRoute, async (c) => c.json({ settings: await getSettings(), stripe_connected: stripeConnected() }, 200));
+  app.openapi(putRoute, async (c) => c.json({ settings: await saveSettings(c.req.valid("json")), stripe_connected: stripeConnected() }, 200));
 }

@@ -15,7 +15,13 @@ interface ShopSettings {
   slot_step: number;
   min_notice: number;
   booking_window_days: number;
+  prepay_mode: "none" | "fixed" | "percent" | "full";
+  prepay_amount: number;
+  prepay_percent: number;
+  refund_window_hours: number;
+  hold_minutes: number;
 }
+interface SettingsReply { settings: ShopSettings; stripe_connected: boolean }
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const SLOT_STEPS = [10, 15, 20, 30, 45, 60];
@@ -39,14 +45,15 @@ function timeZones(): string[] {
 /** Shop settings: name, time zone, address, opening hours, and the online booking rules. */
 export function SettingsPage() {
   const [settings, setSettings] = useState<ShopSettings | null>(null);
+  const [stripeConnected, setStripeConnected] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const zones = useMemo(timeZones, []);
 
   useEffect(() => {
-    api<{ settings: ShopSettings }>("GET", "/api/settings")
-      .then((r) => setSettings(r.settings))
+    api<SettingsReply>("GET", "/api/settings")
+      .then((r) => { setSettings(r.settings); setStripeConnected(r.stripe_connected); })
       .catch((e: Error) => setLoadError(e.message));
   }, []);
 
@@ -67,6 +74,18 @@ export function SettingsPage() {
     if (!Number.isInteger(settings.booking_window_days) || settings.booking_window_days < 1 || settings.booking_window_days > 365) {
       return "Clients can book 1 to 365 days ahead.";
     }
+    if (settings.prepay_mode === "fixed" && !(settings.prepay_amount >= 0.5 && settings.prepay_amount <= 10000)) {
+      return "The pre-pay amount must be at least $0.50.";
+    }
+    if (settings.prepay_mode === "percent" && !(Number.isInteger(settings.prepay_percent) && settings.prepay_percent >= 1 && settings.prepay_percent <= 100)) {
+      return "The pre-pay percent must be 1 to 100.";
+    }
+    if (!Number.isInteger(settings.refund_window_hours) || settings.refund_window_hours < 0 || settings.refund_window_hours > 720) {
+      return "The refund window must be 0 to 720 hours.";
+    }
+    if (!Number.isInteger(settings.hold_minutes) || settings.hold_minutes < 30 || settings.hold_minutes > 1380) {
+      return "The hold time must be at least 30 minutes.";
+    }
     return null;
   };
 
@@ -77,7 +96,7 @@ export function SettingsPage() {
     setSaving(true);
     setMessage(null);
     try {
-      const r = await api<{ settings: ShopSettings }>("PUT", "/api/settings", {
+      const r = await api<SettingsReply>("PUT", "/api/settings", {
         ...settings, shop_name: settings.shop_name.trim(), timezone: settings.timezone.trim(), address: settings.address.trim(),
       });
       setSettings(r.settings);
@@ -174,6 +193,58 @@ export function SettingsPage() {
           <p className="text-xs text-muted-foreground sm:col-span-3">
             Clients can book from the minimum notice up to this many days ahead.
           </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle className="text-base">Pre-pay</CardTitle></CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          {!stripeConnected && (
+            <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground sm:col-span-2">
+              Stripe is not connected, so clients do not pre-pay and bookings are confirmed at once.
+              Set STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET on the server to turn this on.
+            </p>
+          )}
+          <div className="space-y-1.5">
+            <Label htmlFor="prepay-mode">Clients pre-pay</Label>
+            <select id="prepay-mode" className={selectClass} value={settings.prepay_mode}
+              onChange={(e) => set({ prepay_mode: e.currentTarget.value as ShopSettings["prepay_mode"] })}>
+              <option value="none">Nothing</option>
+              <option value="fixed">A fixed amount</option>
+              <option value="percent">A percent of the price</option>
+              <option value="full">The full price</option>
+            </select>
+          </div>
+          {settings.prepay_mode === "fixed" && (
+            <div className="space-y-1.5">
+              <Label htmlFor="prepay-amount">Amount ($)</Label>
+              <Input id="prepay-amount" type="number" min={0.5} max={10000} step={0.01} value={settings.prepay_amount}
+                onInput={(e: Event) => set({ prepay_amount: Number(val(e)) })} />
+            </div>
+          )}
+          {settings.prepay_mode === "percent" && (
+            <div className="space-y-1.5">
+              <Label htmlFor="prepay-percent">Percent (%)</Label>
+              <Input id="prepay-percent" type="number" min={1} max={100} value={settings.prepay_percent}
+                onInput={(e: Event) => set({ prepay_percent: Math.round(Number(val(e))) })} />
+            </div>
+          )}
+          {settings.prepay_mode !== "none" && (
+            <>
+              <div className="space-y-1.5">
+                <Label htmlFor="refund-window">Refund window (hours)</Label>
+                <Input id="refund-window" type="number" min={0} max={720} value={settings.refund_window_hours}
+                  onInput={(e: Event) => set({ refund_window_hours: Math.round(Number(val(e))) })} />
+                <p className="text-xs text-muted-foreground">A client who cancels at least this long before the visit gets the pre-pay back.</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="hold-minutes">Hold time (minutes)</Label>
+                <Input id="hold-minutes" type="number" min={30} max={1380} value={settings.hold_minutes}
+                  onInput={(e: Event) => set({ hold_minutes: Math.round(Number(val(e))) })} />
+                <p className="text-xs text-muted-foreground">We hold the time this long while the client pays. At least 30 minutes.</p>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 

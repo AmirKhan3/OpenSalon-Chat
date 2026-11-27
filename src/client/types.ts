@@ -1,6 +1,6 @@
 export type View = "dashboard" | "calendar" | "appointments" | "clients" | "staff" | "services" | "products" | "settings";
 
-export type AppointmentStatus = "booked" | "confirmed" | "in_progress" | "completed" | "cancelled" | "no_show";
+export type AppointmentStatus = "pending" | "booked" | "confirmed" | "in_progress" | "completed" | "cancelled" | "no_show";
 
 export interface Appointment {
   id: number;

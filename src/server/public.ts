@@ -6,6 +6,10 @@ import { toMinutes } from "./scheduling.js";
 import { getSettings } from "./settings.js";
 import { candidateStarts, isFree, loadDay, openSlots, pickBarber } from "./availability.js";
 import { isValidDate, minutesToTime, shopNow, TIME, timeToMinutes } from "./shoptime.js";
+import { oneAtATime } from "./lock.js";
+import {
+  holdEnd, prepayFor, publicPrepayPolicy, refundOnCancel, releaseExpiredHolds, settlePrepayOnCancel, startCheckout,
+} from "./prepay.js";
 
 /**
  * The public API for clients: /api/public/*. No login.
@@ -97,14 +101,33 @@ const BookingSchema = z.object({
   services: z.array(z.object({ name: z.string(), duration: z.number(), price: z.number() })),
   total_price: z.number(),
   can_cancel: z.boolean(),
+  prepay: z.object({
+    /** Dollars paid, or to pay, at booking. 0 when there is no pre-pay. */
+    amount: z.number(),
+    /** none | due | paid | refunded | refund_due | expired | void */
+    status: z.string(),
+    /** The Stripe payment page. Only while the booking waits for the pre-pay. */
+    pay_url: z.string().nullable(),
+    /** UTC time. The booking is released if it is not paid by then. */
+    hold_expires_at: z.string().nullable(),
+    /** True when cancelling now gives the pre-pay back. */
+    refund_on_cancel: z.boolean(),
+    refund_window_hours: z.number(),
+  }),
 }).openapi("PublicBooking");
 
 const ShopInfoSchema = z.object({ name: z.string(), address: z.string(), timezone: z.string() });
-const BookingResponse = z.object({ booking: BookingSchema, shop: ShopInfoSchema, manage_path: z.string() });
+const BookingResponse = z.object({
+  booking: BookingSchema, shop: ShopInfoSchema, manage_path: z.string(),
+  /** Set when the client must pay now. Send them there. */
+  checkout_url: z.string().optional(),
+});
 
 interface BookingRow {
   id: number; identifier: string; status: string; scheduled_date: string;
   start_time: string; end_time: string; total_price: number; barber: string | null;
+  prepay_amount: number; prepay_status: string; hold_expires_at: string | null;
+  stripe_session_id: string | null; stripe_checkout_url: string | null; stripe_payment_intent: string | null;
 }
 
 const TOKEN = /^[A-Za-z0-9_-]{20,64}$/;
@@ -112,7 +135,8 @@ const TOKEN = /^[A-Za-z0-9_-]{20,64}$/;
 function bookingByToken(token: string): Promise<BookingRow | null> {
   if (!TOKEN.test(token)) return Promise.resolve(null);
   return get<BookingRow>(
-    `SELECT a.id, a.identifier, a.status, a.scheduled_date, a.start_time, a.end_time, a.total_price, s.name AS barber
+    `SELECT a.id, a.identifier, a.status, a.scheduled_date, a.start_time, a.end_time, a.total_price, s.name AS barber,
+            a.prepay_amount, a.prepay_status, a.hold_expires_at, a.stripe_session_id, a.stripe_checkout_url, a.stripe_payment_intent
      FROM appointments a LEFT JOIN staff s ON s.id = a.staff_id
      WHERE a.public_token = ?`,
     [token],
@@ -133,6 +157,7 @@ async function bookingView(row: BookingRow, token: string) {
      JOIN services s ON s.id = aps.service_id WHERE aps.appointment_id = ? ORDER BY aps.id`,
     [row.id],
   );
+  const waiting = row.status === "pending" && row.prepay_status === "due";
   return {
     booking: {
       reference: row.identifier,
@@ -144,10 +169,28 @@ async function bookingView(row: BookingRow, token: string) {
       services,
       total_price: row.total_price,
       can_cancel: canCancel(row, shopNow(settings.timezone)),
+      prepay: {
+        amount: row.prepay_amount,
+        status: row.prepay_status,
+        pay_url: waiting ? row.stripe_checkout_url : null,
+        hold_expires_at: waiting ? row.hold_expires_at : null,
+        refund_on_cancel: refundOnCancel(row, settings),
+        refund_window_hours: settings.refund_window_hours,
+      },
     },
     shop: { name: settings.shop_name, address: settings.address, timezone: settings.timezone },
     manage_path: `/book/manage/${token}`,
   };
+}
+
+/**
+ * Where clients reach this app, without a slash at the end.
+ * PUBLIC_URL when set (needed behind a proxy), else the address of this request.
+ */
+export function publicBaseUrl(requestUrl: string): string {
+  const fixed = (process.env.PUBLIC_URL ?? "").trim().replace(/\/+$/, "");
+  if (/^https?:\/\/[^\s/]+/.test(fixed)) return fixed;
+  return new URL(requestUrl).origin;
 }
 
 // ── Routes ─────────────────────────────────────────────────────────
@@ -164,8 +207,13 @@ const shopRoute = createRoute({
       today: z.string(),
       services: z.array(z.object({
         id: z.number(), name: z.string(), description: z.string(), duration: z.number(),
-        price: z.number(), category: z.string(), prepay_amount: z.number(),
+        price: z.number(), category: z.string(),
       })),
+      /** What a client pays when they book. mode "none": nothing. The amount for a visit comes with the open times. */
+      prepay: z.object({
+        mode: z.enum(["none", "fixed", "percent", "full"]), amount: z.number(), percent: z.number(), minimum: z.number(),
+        refund_window_hours: z.number(), hold_minutes: z.number(),
+      }),
       barbers: z.array(z.object({ id: z.number(), name: z.string(), title: z.string(), color: z.string() })),
     }), "Shop details"),
   },
@@ -183,6 +231,8 @@ const availabilityRoute = createRoute({
   responses: {
     200: json(z.object({
       date: z.string(), duration: z.number(),
+      /** The price of the chosen services, and what the client pays now (0: nothing). */
+      price: z.number(), prepay_amount: z.number(),
       slots: z.array(z.object({ time: z.string(), staff_ids: z.array(z.number()) })),
     }), "Open times"),
     400: json(ErrorSchema, "Bad request"),
@@ -209,6 +259,7 @@ const createBookingRoute = createRoute({
     201: json(BookingResponse, "Booked"),
     400: json(ErrorSchema, "Bad request"),
     409: json(ErrorSchema, "The time is taken"),
+    502: json(ErrorSchema, "The payment page could not be made"),
   },
 });
 
@@ -243,8 +294,8 @@ export function registerPublicRoutes(app: OpenAPIHono): void {
         hours: settings.hours, booking_window_days: settings.booking_window_days,
       },
       today: shopNow(settings.timezone).date,
-      // Pre-pay arrives with Stripe. Until then nothing is due at booking.
-      services: services.map((s) => ({ ...s, prepay_amount: 0 })),
+      services,
+      prepay: publicPrepayPolicy(settings),
       barbers: await activeBarbers(),
     }, 200);
   });
@@ -266,9 +317,12 @@ export function registerPublicRoutes(app: OpenAPIHono): void {
 
     const settings = await getSettings();
     const duration = services.reduce((sum, s) => sum + s.duration, 0);
+    const price = services.reduce((sum, s) => sum + s.price, 0);
+    // Unpaid holds that ran out are open times again.
+    await oneAtATime(releaseExpiredHolds);
     const slots = await openSlots(settings, q.date, duration, staffIds, shopNow(settings.timezone));
     c.header("Cache-Control", "no-store");
-    return c.json({ date: q.date, duration, slots }, 200);
+    return c.json({ date: q.date, duration, price, prepay_amount: prepayFor(settings, price), slots }, 200);
   });
 
   app.openapi(createBookingRoute, async (c) => {
@@ -294,6 +348,8 @@ export function registerPublicRoutes(app: OpenAPIHono): void {
       return c.json({ error: "That time is not open for booking. Please pick another time." }, 400);
     }
 
+    // This route runs one at a time (see the write queue), so no lock is needed here.
+    await releaseExpiredHolds();
     const load = await loadDay(body.date);
     const wanted = body.staff_id != null ? [body.staff_id] : barberIds;
     const staffId = pickBarber(load, wanted.filter((id) => isFree(load, id, start, end)));
@@ -304,10 +360,16 @@ export function registerPublicRoutes(app: OpenAPIHono): void {
     const token = randomBytes(24).toString("base64url");
     const startTime = minutesToTime(start);
     const endTime = minutesToTime(end);
+    // With pre-pay the booking waits as "pending" and holds its time until the hold ends.
+    const prepay = prepayFor(settings, price);
+    const hold = prepay > 0 ? holdEnd(settings.hold_minutes) : null;
+    const reference = await nextIdentifier();
     const created = await run(
-      `INSERT INTO appointments (identifier, client_id, staff_id, status, scheduled_date, start_time, end_time, total_price, source, public_token)
-       VALUES (?, ?, ?, 'confirmed', ?, ?, ?, ?, 'online', ?)`,
-      [await nextIdentifier(), clientId, staffId, body.date, startTime, endTime, price, token],
+      `INSERT INTO appointments (identifier, client_id, staff_id, status, scheduled_date, start_time, end_time, total_price, source, public_token,
+         prepay_amount, prepay_status, hold_expires_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'online', ?, ?, ?, ?)`,
+      [reference, clientId, staffId, hold ? "pending" : "confirmed", body.date, startTime, endTime, price, token,
+        prepay, hold ? "due" : "none", hold ? hold.toISOString() : null],
     );
     const id = Number(created.lastInsertRowid);
 
@@ -336,12 +398,32 @@ export function registerPublicRoutes(app: OpenAPIHono): void {
       await run("INSERT INTO appointment_notes (appointment_id, content) VALUES (?, ?)", [id, `Name given online: ${body.name}. The phone number matches ${client.savedName}.`]);
     }
 
+    let checkoutUrl: string | undefined;
+    if (hold) {
+      const checkout = await startCheckout({
+        appointmentId: id, reference, amount: prepay, shopName: settings.shop_name, expires: hold,
+        manageUrl: `${publicBaseUrl(c.req.url)}/book/manage/${token}`,
+        ...(body.email ? { email: body.email } : {}),
+      });
+      if (!checkout.ok) {
+        // No payment page, so no booking. The time is open again.
+        await run("DELETE FROM appointment_notes WHERE appointment_id = ?", [id]);
+        await run("DELETE FROM appointment_services WHERE appointment_id = ?", [id]);
+        await run("DELETE FROM appointments WHERE id = ?", [id]);
+        return c.json({ error: "We could not start the payment. Please try again." }, 502);
+      }
+      checkoutUrl = checkout.url;
+      await run("INSERT INTO appointment_notes (appointment_id, content) VALUES (?, ?)", [id, "Waiting for the pre-pay. The time is held until it is paid or the hold ends."]);
+    }
+
     const row = await bookingByToken(token);
-    return c.json(await bookingView(row!, token), 201);
+    return c.json({ ...(await bookingView(row!, token)), ...(checkoutUrl ? { checkout_url: checkoutUrl } : {}) }, 201);
   });
 
   app.openapi(getBookingRoute, async (c) => {
     const { token } = c.req.valid("param");
+    if (!TOKEN.test(token)) return c.json({ error: NOT_FOUND }, 404);
+    await oneAtATime(releaseExpiredHolds);
     const row = await bookingByToken(token);
     if (!row) return c.json({ error: NOT_FOUND }, 404);
     c.header("Cache-Control", "no-store");
@@ -359,6 +441,7 @@ export function registerPublicRoutes(app: OpenAPIHono): void {
       }
       await run("UPDATE appointments SET status = 'cancelled', updated_at = utc_now() WHERE id = ?", [row.id]);
       await run("INSERT INTO appointment_notes (appointment_id, content) VALUES (?, ?)", [row.id, "Cancelled online by the client."]);
+      await settlePrepayOnCancel(row, settings);
     }
     return c.json(await bookingView((await bookingByToken(token))!, token), 200);
   });

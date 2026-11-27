@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 
 const STATUS_CONFIG: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
+  pending: { label: "Waiting for pre-pay", variant: "outline" },
   booked: { label: "Booked", variant: "default" },
   confirmed: { label: "Confirmed", variant: "secondary" },
   in_progress: { label: "In Progress", variant: "outline" },

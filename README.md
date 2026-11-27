@@ -60,6 +60,32 @@ In the dashboard, open **Settings** to set the shop name, time zone, address, op
 how often times start, the minimum notice, and how many days ahead clients can book.
 All times are stored in shop time. `SHOP_TIMEZONE` is the time zone used until you save one.
 
+## Pre-pay with Stripe
+
+Clients can pay part or all of the price when they book online. We call this "pre-pay".
+
+In Settings -> Pre-pay, choose what clients pay: nothing, a fixed amount, a percent of the price, or the full price.
+You also set the refund window (hours) and the hold time (minutes, at least 30).
+
+How it works:
+
+1. The client books. The booking is "Waiting for pre-pay" and the time is held.
+2. The client pays on a Stripe page. Stripe tells the server, and the booking is confirmed.
+3. If the client does not pay before the hold ends, the booking is cancelled and the time is open again.
+4. If the client pays after the hold ended, the booking is confirmed only if the time is still free. If not, the appointment gets a note that asks you to refund the payment in Stripe.
+5. If the client cancels at least the refund window before the visit, the pre-pay is refunded automatically. Later than that, it is not refunded.
+
+Set it up:
+
+1. Put your Stripe secret key in `STRIPE_SECRET_KEY`, and the public address of the server in `PUBLIC_URL`.
+2. In the Stripe Dashboard, add a webhook endpoint at `<PUBLIC_URL>/api/stripe/webhook` with these events:
+   `checkout.session.completed`, `checkout.session.async_payment_succeeded`,
+   `checkout.session.async_payment_failed`, `checkout.session.expired`.
+3. Put the signing secret of that endpoint in `STRIPE_WEBHOOK_SECRET`.
+
+Without `STRIPE_SECRET_KEY` there is no pre-pay, and bookings are confirmed at once.
+To test on your computer, use test keys and `stripe listen --forward-to localhost:8787/api/stripe/webhook`.
+
 ## Settings
 
 Copy `.env.example` to `.env` and fill in what you need. Never put secrets in the code.

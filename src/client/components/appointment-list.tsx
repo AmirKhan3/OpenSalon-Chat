@@ -46,6 +46,7 @@ export function AppointmentList() {
           onChange={(e) => setAppointmentsStatusFilter((e.target as HTMLSelectElement).value)}
         >
           <option value="">All Statuses</option>
+          <option value="pending">Waiting for pre-pay</option>
           <option value="booked">Booked</option>
           <option value="confirmed">Confirmed</option>
           <option value="in_progress">In Progress</option>

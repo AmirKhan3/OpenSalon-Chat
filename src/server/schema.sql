@@ -139,3 +139,14 @@ CREATE INDEX IF NOT EXISTS idx_blocked_slots_date ON blocked_slots(blocked_date)
 CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(name);
 CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
 CREATE INDEX IF NOT EXISTS idx_services_category ON services(category);
+
+-- Pre-pay (Stripe). prepay_status: none | due | paid | refunded | refund_due | expired | void.
+-- hold_expires_at: UTC time (ISO text). A pending booking holds its time until then.
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS prepay_amount DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS prepay_status TEXT NOT NULL DEFAULT 'none';
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS hold_expires_at TEXT;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS stripe_session_id TEXT;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS stripe_checkout_url TEXT;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS stripe_payment_intent TEXT;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS stripe_refund_id TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_appointments_stripe_session ON appointments(stripe_session_id);
