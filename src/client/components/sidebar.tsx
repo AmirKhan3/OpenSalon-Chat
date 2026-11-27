@@ -1,4 +1,3 @@
-import { AppNav } from "@clawnify/app/client";
 import { useEffect, useState } from "preact/hooks";
 import type { ComponentChildren } from "preact";
 import { useApp } from "../context";
@@ -29,7 +28,7 @@ function SidebarContent({ currentView, onNavigate, card }: { currentView: View; 
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
           <Scissors className="h-4 w-4" />
         </div>
-        <span className="text-base font-semibold text-sidebar-foreground">Salon Manager</span>
+        <span className="text-base font-semibold text-sidebar-foreground">Tolly</span>
       </div>
       <Separator />
       <nav aria-label="Main navigation" className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 py-3">
@@ -92,27 +91,15 @@ export function Sidebar({ currentView }: { currentView: View }) {
     };
   }, []);
 
-  // One <AppNav>: inside Clawnify the dashboard draws this navigation, and
-  // anywhere else the salon's own sidebar below is drawn from it.
-  const icons = ["home", "calendar-days", "clock", "users", "users", "sparkles", "package"];
-  return <AppNav title="Salon" icon="calendar-days" active={currentView}
-    groups={[{ items: navItems.map((item, index) => ({
-      id: item.view, label: item.label, href: item.path, icon: icons[index],
-      home: item.view === "dashboard",
-      count: item.view === "appointments" ? stats.appointments || undefined
-        : item.view === "clients" ? stats.clients || undefined
-        : item.view === "products" ? stats.low_stock_products || undefined : undefined,
-    })) }]}
-    onNavigate={(item) => navigate(item.href || "/")}
-    standalone={(nav) => (
+  return (
     <>
       <aside className="hidden w-60 shrink-0 border-r md:block">
-        <SidebarContent currentView={currentView} card={nav.card} />
+        <SidebarContent currentView={currentView} />
       </aside>
       <header className="flex shrink-0 items-center justify-between gap-3 border-b bg-sidebar px-4 py-2 md:hidden">
         <span className="flex items-center gap-2 text-sm font-semibold">
           <Scissors className="h-4 w-4 text-primary" />
-          Salon Manager
+          Tolly
         </span>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
@@ -128,5 +115,5 @@ export function Sidebar({ currentView }: { currentView: View }) {
         </Dialog>
       </header>
     </>
-    )} />;
+  );
 }

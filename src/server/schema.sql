@@ -1,108 +1,117 @@
--- Clients (customers who book appointments)
+-- Tolly schema for Postgres. Every statement is idempotent: this file is
+-- applied on every server start.
+
+-- Timestamps are stored as UTC text ("YYYY-MM-DD HH:MM:SS").
+CREATE OR REPLACE FUNCTION utc_now() RETURNS TEXT
+  LANGUAGE sql STABLE
+  AS $$ SELECT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') $$;
+
+CREATE OR REPLACE FUNCTION utc_today() RETURNS TEXT
+  LANGUAGE sql STABLE
+  AS $$ SELECT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD') $$;
+
+-- Clients (people who book appointments)
 CREATE TABLE IF NOT EXISTS clients (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
   email TEXT DEFAULT '',
   phone TEXT DEFAULT '',
   notes TEXT DEFAULT '',
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now'))
+  created_at TEXT DEFAULT utc_now(),
+  updated_at TEXT DEFAULT utc_now()
 );
 
--- Staff members (stylists, therapists, technicians, etc.)
+-- Staff (barbers)
 CREATE TABLE IF NOT EXISTS staff (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
   email TEXT DEFAULT '',
   phone TEXT DEFAULT '',
   title TEXT DEFAULT '',
   color TEXT NOT NULL DEFAULT '#7c3aed',
   active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT DEFAULT (datetime('now'))
+  created_at TEXT DEFAULT utc_now()
 );
 
--- Services offered (haircut, massage, manicure, etc.)
+-- Services (haircut, beard trim, ...)
 CREATE TABLE IF NOT EXISTS services (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
   description TEXT DEFAULT '',
   duration INTEGER NOT NULL DEFAULT 60,
-  price REAL NOT NULL DEFAULT 0,
+  price DOUBLE PRECISION NOT NULL DEFAULT 0,
   color TEXT NOT NULL DEFAULT '#6b7280',
   category TEXT DEFAULT '',
   active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT DEFAULT (datetime('now'))
+  created_at TEXT DEFAULT utc_now()
 );
 
 -- Appointments (bookings)
 CREATE TABLE IF NOT EXISTS appointments (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   identifier TEXT NOT NULL UNIQUE,
   client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
   staff_id INTEGER REFERENCES staff(id) ON DELETE SET NULL,
   status TEXT NOT NULL DEFAULT 'booked',
-  scheduled_date TEXT NOT NULL DEFAULT (date('now')),
+  scheduled_date TEXT NOT NULL DEFAULT utc_today(),
   start_time TEXT NOT NULL DEFAULT '09:00',
   end_time TEXT NOT NULL DEFAULT '10:00',
-  total_price REAL NOT NULL DEFAULT 0,
+  total_price DOUBLE PRECISION NOT NULL DEFAULT 0,
   notes TEXT DEFAULT '',
   is_recurring INTEGER NOT NULL DEFAULT 0,
   recurrence_interval TEXT DEFAULT '',
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now'))
+  created_at TEXT DEFAULT utc_now(),
+  updated_at TEXT DEFAULT utc_now()
 );
 
 -- Services included in an appointment (many-to-many)
 CREATE TABLE IF NOT EXISTS appointment_services (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   appointment_id INTEGER NOT NULL REFERENCES appointments(id) ON DELETE CASCADE,
   service_id INTEGER NOT NULL REFERENCES services(id) ON DELETE CASCADE,
-  price REAL NOT NULL DEFAULT 0,
+  price DOUBLE PRECISION NOT NULL DEFAULT 0,
   duration INTEGER NOT NULL DEFAULT 60
 );
 
 -- Appointment notes / activity log
 CREATE TABLE IF NOT EXISTS appointment_notes (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   appointment_id INTEGER NOT NULL REFERENCES appointments(id) ON DELETE CASCADE,
   content TEXT NOT NULL,
-  created_at TEXT DEFAULT (datetime('now'))
+  created_at TEXT DEFAULT utc_now()
 );
 
--- Blocked time slots (breaks, days off, lunch, etc.)
+-- Blocked time (breaks, days off, lunch, ...)
 CREATE TABLE IF NOT EXISTS blocked_slots (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   staff_id INTEGER NOT NULL REFERENCES staff(id) ON DELETE CASCADE,
   blocked_date TEXT NOT NULL,
   start_time TEXT NOT NULL,
   end_time TEXT NOT NULL,
   reason TEXT DEFAULT '',
-  created_at TEXT DEFAULT (datetime('now'))
+  created_at TEXT DEFAULT utc_now()
 );
 
--- Products (inventory: shampoo, creams, tools, etc.)
+-- Products (retail stock)
 CREATE TABLE IF NOT EXISTS products (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
   brand TEXT DEFAULT '',
   category TEXT DEFAULT '',
   sku TEXT DEFAULT '',
-  price REAL NOT NULL DEFAULT 0,
-  cost REAL NOT NULL DEFAULT 0,
+  price DOUBLE PRECISION NOT NULL DEFAULT 0,
+  cost DOUBLE PRECISION NOT NULL DEFAULT 0,
   stock INTEGER NOT NULL DEFAULT 0,
   low_stock_alert INTEGER NOT NULL DEFAULT 5,
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now'))
+  created_at TEXT DEFAULT utc_now(),
+  updated_at TEXT DEFAULT utc_now()
 );
 
--- Auto-incrementing identifier counter
+-- Key/value rows (appointment identifier counter)
 CREATE TABLE IF NOT EXISTS _meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
--- Seed rows (the _meta counter rows and the example staff / services /
--- clients / products) moved into the app: see src/server/seed.ts. Clawnify
--- applies this file as DDL only, so any INSERT here fails the whole deploy.
 
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_appointments_client ON appointments(client_id);

@@ -1,41 +1,47 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
-import { DatabaseSync } from "node:sqlite";
-import { before, test } from "node:test";
+import { after, test } from "node:test";
 
-// Bundle the real routes with Vite's own bundler, then exercise them against
-// SQLite through the same StorageBinding contract used by the hosted app.
-const require = createRequire(import.meta.url);
-const { build } = createRequire(require.resolve("vite"))("esbuild");
-let bundle: string;
-let scenario = 0;
-before(async () => {
-  const result = await build({
-    entryPoints: [new URL("./index.ts", import.meta.url).pathname],
-    bundle: true, platform: "node", format: "esm", write: false,
-  });
-  bundle = `data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`;
-});
+// The real routes, run against embedded Postgres (PGlite) in memory.
+// No network and no database to install.
+process.env.SEED_DEMO_DATA = "false";
 
-async function setup(t: { after: (fn: () => void) => void }) {
-  const { default: app } = await import(`${bundle}#${scenario++}`);
-  const db = new DatabaseSync(":memory:");
-  t.after(() => db.close());
-  db.exec("PRAGMA foreign_keys = ON");
-  db.exec(readFileSync(new URL("./schema.sql", import.meta.url), "utf8"));
-  const env = { STORAGE: { async query(sql: string, params: any[] = []) {
-    const stmt = db.prepare(sql);
-    if (stmt.columns().length) return { rows: stmt.all(...params) };
-    const result = stmt.run(...params);
-    return { rows: [], meta: { changes: result.changes, last_row_id: Number(result.lastInsertRowid) } };
-  } } };
+const { default: app } = await import("./index.js");
+const dbm = await import("./db.js");
+
+after(() => dbm.closeDB());
+
+/** The rows the original OpenSalon tests were written against. */
+async function fixtures() {
+  await dbm.exec(`
+    INSERT INTO staff (name, title, color) VALUES
+      ('Alex', 'Senior Specialist', '#7c3aed'), ('Jordan', 'Specialist', '#ec4899'),
+      ('Sam', 'Specialist', '#f59e0b'), ('Taylor', 'Junior', '#10b981');
+    INSERT INTO services (name, duration, price, category) VALUES
+      ('Standard Session', 60, 50, 'General'), ('Quick Service', 30, 30, 'General'),
+      ('Premium Session', 90, 85, 'Premium'), ('Express Touch-up', 15, 20, 'General'),
+      ('Consultation', 30, 0, 'General'), ('Package Deal', 120, 120, 'Premium');
+    INSERT INTO clients (name, email, phone) VALUES
+      ('Jamie Rivera', 'jamie@example.com', '555-0101'), ('Casey Morgan', 'casey@example.com', '555-0102'),
+      ('Riley Chen', 'riley@example.com', '555-0103'), ('Dakota Smith', 'dakota@example.com', '555-0104');
+  `);
+}
+
+async function setup(_t?: unknown) {
+  await dbm.resetDB("pglite:memory");
+  await fixtures();
+  // Same shape as the old synchronous SQLite handle, but async.
+  const db = {
+    prepare: (sql: string) => ({
+      get: (...params: unknown[]) => dbm.get<any>(sql, params),
+      run: (...params: unknown[]) => dbm.run(sql, params),
+    }),
+  };
   const call = async (method: string, path: string, body?: object) => {
     const response = await app.request(path, {
       method, headers: { "content-type": "application/json" },
       ...(body ? { body: JSON.stringify(body) } : {}),
-    }, env);
-    return { status: response.status, body: await response.json() };
+    });
+    return { status: response.status, body: await response.json() as any };
   };
   const create = (patch: object = {}) => call("POST", "/api/appointments", {
     client_id: 1, staff_id: 1, scheduled_date: "2026-09-14", start_time: "10:00", service_ids: [1], ...patch,
@@ -70,7 +76,7 @@ test("a deliberate overlap can be edited, checked in, completed, and cancelled",
   for (const status of ["checked_in", "completed", "cancelled"]) {
     assert.equal((await update(id, { status })).status, 200, status);
   }
-  assert.equal(db.prepare("SELECT status FROM appointments WHERE id = ?").get(id)?.status, "cancelled");
+  assert.equal((await db.prepare("SELECT status FROM appointments WHERE id = ?").get(id))?.status, "cancelled");
   assert.equal((await update(id, { status: "booked" })).status, 409, "restoring occupies the slot again");
   assert.equal((await update(id, { status: "booked", allow_conflict: true })).status, 200);
 });
@@ -90,7 +96,7 @@ test("rescheduling preserves duration and rejects an occupied staff member", asy
   const first = await create();
   const id = first.body.appointment.id;
   assert.equal((await update(id, { start_time: "11:00" })).status, 200);
-  assert.equal(db.prepare("SELECT end_time FROM appointments WHERE id = ?").get(id)?.end_time, "12:00");
+  assert.equal((await db.prepare("SELECT end_time FROM appointments WHERE id = ?").get(id))?.end_time, "12:00");
   await create({ staff_id: 2, start_time: "11:00" });
   assert.equal((await update(id, { staff_id: 2 })).status, 409);
   assert.equal((await update(id, { staff_id: 2, allow_conflict: true })).status, 200);
@@ -100,7 +106,7 @@ test("rescheduling preserves duration and rejects an occupied staff member", asy
 test("blocked time rejects new and moved appointments", async (t) => {
   const { create, update, db } = await setup(t);
   const first = await create(); // also runs the application's seed middleware
-  db.prepare("INSERT INTO blocked_slots (staff_id, blocked_date, start_time, end_time, reason) VALUES (1, '2026-09-14', '13:00', '14:00', 'Lunch')").run();
+  await db.prepare("INSERT INTO blocked_slots (staff_id, blocked_date, start_time, end_time, reason) VALUES (1, '2026-09-14', '13:00', '14:00', 'Lunch')").run();
   const blocked = await create({ start_time: "13:00" });
   assert.equal(blocked.status, 409);
   assert.equal(blocked.body.conflicts[0].kind, "blocked");
@@ -118,7 +124,7 @@ test("blocked time must be a valid forward interval", async (t) => {
   for (const [start, end] of [["13:00", "12:00"], ["12:00", "12:00"], ["noon", "13:00"]]) {
     assert.equal((await block(start, end)).status, 400, `${start}-${end}`);
   }
-  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM blocked_slots").get()?.count, 2);
+  assert.equal((await db.prepare("SELECT COUNT(*)::int AS count FROM blocked_slots").get())?.count, 2);
 
   const schema = await call("GET", "/api/openapi.json");
   assert.ok(schema.body.paths["/api/blocked-slots"].post.responses[400]);
@@ -127,7 +133,7 @@ test("blocked time must be a valid forward interval", async (t) => {
 test("blocked time reports every clash and requires an explicit override", async (t) => {
   const { call, create, db } = await setup(t);
   await create({ start_time: "12:30" });
-  db.prepare("INSERT INTO blocked_slots (staff_id, blocked_date, start_time, end_time, reason) VALUES (1, '2026-09-14', '12:00', '12:15', 'Break')").run();
+  await db.prepare("INSERT INTO blocked_slots (staff_id, blocked_date, start_time, end_time, reason) VALUES (1, '2026-09-14', '12:00', '12:15', 'Break')").run();
   const block = (patch: object = {}) => call("POST", "/api/blocked-slots", {
     staff_id: 1, blocked_date: "2026-09-14", start_time: "12:00", end_time: "13:00", reason: "Closure", ...patch,
   });
@@ -136,10 +142,10 @@ test("blocked time reports every clash and requires an explicit override", async
   assert.equal(rejected.status, 409);
   assert.deepEqual(rejected.body.conflicts.map((conflict: { kind: string }) => conflict.kind), ["appointment", "blocked"]);
   assert.match(rejected.body.error, /allow_conflict: true to block over it anyway/);
-  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM blocked_slots").get()?.count, 1);
+  assert.equal((await db.prepare("SELECT COUNT(*)::int AS count FROM blocked_slots").get())?.count, 1);
 
   assert.equal((await block({ allow_conflict: true })).status, 201);
-  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM blocked_slots").get()?.count, 2);
+  assert.equal((await db.prepare("SELECT COUNT(*)::int AS count FROM blocked_slots").get())?.count, 2);
 
   const schema = await call("GET", "/api/openapi.json");
   assert.ok(schema.body.paths["/api/blocked-slots"].post.responses[409]);
@@ -173,7 +179,7 @@ test("rescheduling across dates keeps booking history and moves the calendar ent
   for (const field of ["id", "identifier", "client_id", "staff_id", "status", "total_price", "notes", "appointment_services", "appointment_notes", "created_at"]) {
     assert.deepEqual(after[field], before[field], field);
   }
-  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM appointments").get()?.count, 2);
+  assert.equal((await db.prepare("SELECT COUNT(*)::int AS count FROM appointments").get())?.count, 2);
   const oldDay = await call("GET", "/api/calendar?start=2026-09-14&end=2026-09-14");
   const newDay = await call("GET", "/api/calendar?start=2026-09-15&end=2026-09-15");
   assert.equal(oldDay.body.appointments.some((a: { id: number }) => a.id === id), false);
@@ -227,12 +233,12 @@ test("products preserve zero thresholds and can be edited without recreation", a
   });
   assert.equal(created.status, 201);
   const id = created.body.product.id;
-  const zero = db.prepare("SELECT stock, low_stock_alert FROM products WHERE id = ?").get(id);
+  const zero = await db.prepare("SELECT stock, low_stock_alert FROM products WHERE id = ?").get(id);
   assert.equal(zero?.stock, 0);
   assert.equal(zero?.low_stock_alert, 0);
 
   assert.equal((await call("PUT", `/api/products/${id}`, { stock: 8, price: 24 })).status, 200);
-  const updated = db.prepare("SELECT id, stock, price FROM products WHERE id = ?").get(id);
+  const updated = await db.prepare("SELECT id, stock, price FROM products WHERE id = ?").get(id);
   assert.equal(updated?.id, id);
   assert.equal(updated?.stock, 8);
   assert.equal(updated?.price, 24);
@@ -245,21 +251,58 @@ test("invalid times and midnight overflow cannot bypass the guard, even with an 
     assert.equal((await create({ start_time, allow_conflict: true })).status, 400, start_time);
   }
   assert.equal((await create({ service_ids: [9999] })).status, 400);
-  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM appointments").get()?.count, 0);
+  assert.equal((await db.prepare("SELECT COUNT(*)::int AS count FROM appointments").get())?.count, 0);
   const first = await create();
   assert.equal((await update(first.body.appointment.id, { start_time: "23:30" })).status, 400);
   assert.equal((await update(first.body.appointment.id, { end_time: "09:00" })).status, 400);
   assert.equal((await update(first.body.appointment.id, { end_time: "11:00garbage" })).status, 400);
-  assert.equal(db.prepare("SELECT start_time FROM appointments WHERE id = ?").get(first.body.appointment.id)?.start_time, "10:00");
+  assert.equal((await db.prepare("SELECT start_time FROM appointments WHERE id = ?").get(first.body.appointment.id))?.start_time, "10:00");
 });
 
 test("legacy invalid times do not prevent cancellation or metadata repair", async (t) => {
   const { create, update, db } = await setup(t);
   const first = await create();
   const id = first.body.appointment.id;
-  db.prepare("UPDATE appointments SET end_time = start_time WHERE id = ?").run(id);
+  await db.prepare("UPDATE appointments SET end_time = start_time WHERE id = ?").run(id);
   assert.equal((await update(id, { notes: "Needs rescheduling" })).status, 200);
   assert.equal((await update(id, { status: "cancelled" })).status, 200);
   assert.equal((await update(id, { status: "booked" })).status, 400);
   assert.equal((await update(id, { status: "booked", end_time: "11:00" })).status, 200);
+});
+
+test("bookings made at the same moment get different numbers and never overlap", async (t) => {
+  const { create, call } = await setup(t);
+  // Ten different times: all are saved, each with its own number.
+  const times = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"];
+  const made = await Promise.all(times.map((start_time) => create({ start_time })));
+  assert.deepEqual(made.map((r) => r.status), times.map(() => 201));
+  assert.equal(new Set(made.map((r) => r.body.appointment.identifier)).size, times.length);
+
+  // Ten requests for the same slot: one wins, the rest get 409.
+  const same = await Promise.all(times.map(() => create({ scheduled_date: "2026-09-15" })));
+  assert.equal(same.filter((r) => r.status === 201).length, 1);
+  assert.equal(same.filter((r) => r.status === 409).length, times.length - 1);
+
+  // A blocked slot and a booking for the same time: only one is saved.
+  const [slot, booking] = await Promise.all([
+    call("POST", "/api/blocked-slots", { staff_id: 2, blocked_date: "2026-09-16", start_time: "10:00", end_time: "11:00" }),
+    create({ staff_id: 2, scheduled_date: "2026-09-16" }),
+  ]);
+  assert.deepEqual([slot.status, booking.status].sort(), [201, 409]);
+});
+
+test("a filter that is not a number, or a record that does not exist, gets 400", async (t) => {
+  const { create, call } = await setup(t);
+  const filter = await call("GET", "/api/appointments?staff_id=abc");
+  assert.equal(filter.status, 400);
+  assert.match(filter.body.error, /staff_id/);
+  assert.equal((await call("GET", "/api/appointments?staff_id=1")).status, 200);
+
+  for (const patch of [{ client_id: 999 }, { staff_id: 999 }, { service_ids: [999] }]) {
+    const res = await create(patch);
+    assert.ok(res.status === 400 || res.status === 404, `${JSON.stringify(patch)} -> ${res.status}`);
+    assert.equal(typeof res.body.error, "string");
+  }
+  // Nothing was half-saved.
+  assert.equal((await call("GET", "/api/appointments")).body.total, 0);
 });
