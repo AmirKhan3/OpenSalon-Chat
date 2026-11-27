@@ -18,6 +18,7 @@ import { SettingsPage } from "./components/settings";
 import { Inbox } from "./components/inbox";
 import { AutomationsPage } from "./components/automations";
 import { AssistantPage } from "./components/assistant";
+import { ReportsPage } from "./components/reports";
 import { ErrorBanner } from "./components/error-banner";
 
 interface AuthStatus { logged_in: boolean; login_required: boolean }
@@ -103,6 +104,7 @@ function Shell({ onLogout }: { onLogout?: () => void }) {
       case "services": return <ServiceList />;
       case "products": return <ProductList />;
       case "automations": return <AutomationsPage />;
+      case "reports": return <ReportsPage />;
       case "settings": return <SettingsPage />;
       default: return <Dashboard />;
     }
@@ -110,9 +112,9 @@ function Shell({ onLogout }: { onLogout?: () => void }) {
 
   return (
     <AppContext.Provider value={appState}>
-      <div className="flex h-dvh flex-col overflow-hidden md:flex-row">
+      <div className="flex h-dvh flex-col overflow-hidden md:flex-row print:block print:h-auto print:overflow-visible">
         <Sidebar currentView={view} onLogout={onLogout} />
-        <main className="min-h-0 min-w-0 flex-1 overflow-auto bg-background">
+        <main className="min-h-0 min-w-0 flex-1 overflow-auto bg-background print:overflow-visible">
           {appState.loading ? (
             <div className="flex h-full items-center justify-center text-muted-foreground">Loading...</div>
           ) : (

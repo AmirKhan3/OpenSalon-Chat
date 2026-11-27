@@ -80,7 +80,7 @@ Set it up:
 1. Put your Stripe secret key in `STRIPE_SECRET_KEY`, and the public address of the server in `PUBLIC_URL`.
 2. In the Stripe Dashboard, add a webhook endpoint at `<PUBLIC_URL>/api/stripe/webhook` with these events:
    `checkout.session.completed`, `checkout.session.async_payment_succeeded`,
-   `checkout.session.async_payment_failed`, `checkout.session.expired`.
+   `checkout.session.async_payment_failed`, `checkout.session.expired`, `charge.refunded`.
 3. Put the signing secret of that endpoint in `STRIPE_WEBHOOK_SECRET`.
 
 Without `STRIPE_SECRET_KEY` there is no pre-pay, and bookings are confirmed at once.

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "preact/hooks";
 import { useApp } from "../context";
-import { Scissors, Menu, LayoutDashboard, CalendarDays, Clock, Users, UserCog, Sparkles, Package, LogOut, Settings, Inbox as InboxIcon, Bot, Zap } from "lucide-preact";
+import { Scissors, Menu, LayoutDashboard, CalendarDays, Clock, Users, UserCog, Sparkles, Package, LogOut, Settings, Inbox as InboxIcon, Bot, Zap, BarChart3 } from "lucide-preact";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +35,7 @@ const navItems: { view: View; path: string; label: string; icon: typeof LayoutDa
   { view: "staff", path: "/staff", label: "Staff", icon: UserCog },
   { view: "services", path: "/services", label: "Services", icon: Sparkles },
   { view: "products", path: "/products", label: "Products", icon: Package },
+  { view: "reports", path: "/reports", label: "Reports", icon: BarChart3 },
   { view: "settings", path: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -126,10 +127,10 @@ export function Sidebar({ currentView, onLogout }: { currentView: View; onLogout
 
   return (
     <>
-      <aside className="hidden w-60 shrink-0 border-r md:block">
+      <aside className="hidden w-60 shrink-0 border-r md:block print:hidden">
         <SidebarContent currentView={currentView} onLogout={onLogout} />
       </aside>
-      <header className="flex shrink-0 items-center justify-between gap-3 border-b bg-sidebar px-4 py-2 md:hidden">
+      <header className="flex shrink-0 items-center justify-between gap-3 border-b bg-sidebar px-4 py-2 md:hidden print:hidden">
         <span className="flex items-center gap-2 text-sm font-semibold">
           <Scissors className="h-4 w-4 text-primary" />
           Tolly

@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { StatusBadge } from "./status-badge";
 import { RescheduleAppointment } from "./reschedule-appointment";
+import { AppointmentPayments } from "./appointment-payments";
 import { conflictsFrom, conflictSentence } from "@/lib/conflicts";
 
 export function AppointmentDetail() {
@@ -109,6 +110,7 @@ export function AppointmentDetail() {
               )}
             </CardContent>
           </Card>
+          <AppointmentPayments key={apt.id} appointmentId={apt.id} status={apt.status} totalPrice={apt.total_price} />
         </div>
 
         <div className="space-y-6">

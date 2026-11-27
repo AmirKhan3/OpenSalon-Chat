@@ -10,6 +10,7 @@ import { registerChatRoutes } from "./chat.js";
 import { registerSmsRoutes } from "./sms.js";
 import { registerAutomationRoutes } from "./automations.js";
 import { registerCalendarRoutes } from "./calendar.js";
+import { registerPaymentRoutes } from "./paymentroutes.js";
 import { emitBookingEvent } from "./events.js";
 import { utcStamp } from "./shoptime.js";
 import { registerPublicRoutes } from "./public.js";
@@ -605,11 +606,22 @@ const deleteAppointment = createRoute({
   method: "delete",
   path: "/api/appointments/{id}",
   request: { params: IdParam },
-  responses: { 200: { description: "Deleted", content: { "application/json": { schema: OkSchema } } } },
+  responses: {
+    200: { description: "Deleted", content: { "application/json": { schema: OkSchema } } },
+    400: { description: "Refused", content: { "application/json": { schema: z.object({ error: z.string() }) } } },
+  },
 });
 
 app.openapi(deleteAppointment, async (c) => {
   const id = Number(c.req.valid("param").id);
+  // Money was taken for this booking, or may still come in. Keep it, so the income report and Stripe stay linked.
+  const money = await get<{ n: number }>(
+    `SELECT (SELECT COUNT(*) FROM payments WHERE appointment_id = ?)
+          + (SELECT COUNT(*) FROM appointments WHERE id = ? AND prepay_status IN ('due', 'paid', 'refund_due', 'expired')) AS n`,
+    [id, id]);
+  if (Number(money?.n ?? 0) > 0) {
+    return c.json({ error: "This booking has a payment or a pre-pay. Cancel it instead of deleting it." }, 400);
+  }
   await run("DELETE FROM appointments WHERE id = ?", [id]);
   return c.json({ ok: true }, 200);
 });
@@ -1198,5 +1210,6 @@ registerChatRoutes(app);
 registerSmsRoutes(app);
 registerAutomationRoutes(app);
 registerCalendarRoutes(app);
+registerPaymentRoutes(app);
 
 export default app;

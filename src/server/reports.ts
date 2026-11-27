@@ -73,7 +73,7 @@ export async function incomeReport(start: string, end: string): Promise<IncomeRe
     add(months.get(month)!, row);
     const sum = Number(row.amount) + Number(row.tip);
     methods.set(row.method, (methods.get(row.method) ?? 0) + sum);
-    const who = barbers.get(row.staff_id) ?? { barber: row.staff_id === null ? "No barber" : row.barber ?? "Former barber", total: 0, tips: 0 };
+    const who = barbers.get(row.staff_id) ?? { barber: row.staff_id === null ? "No barber, or a removed barber" : row.barber ?? "Former barber", total: 0, tips: 0 };
     who.total += sum;
     who.tips += Number(row.tip);
     barbers.set(row.staff_id, who);

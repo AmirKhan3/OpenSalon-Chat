@@ -1,4 +1,4 @@
-export type View = "dashboard" | "inbox" | "assistant" | "automations" | "calendar" | "appointments" | "clients" | "staff" | "services" | "products" | "settings";
+export type View = "dashboard" | "inbox" | "assistant" | "automations" | "calendar" | "appointments" | "clients" | "staff" | "services" | "products" | "reports" | "settings";
 
 export type AppointmentStatus = "pending" | "booked" | "confirmed" | "in_progress" | "completed" | "cancelled" | "no_show";
 

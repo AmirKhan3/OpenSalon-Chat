@@ -6,6 +6,7 @@ import { getSettings, type ShopSettings } from "./settings.js";
 import { emitBookingEvent } from "./events.js";
 import { daysBetween, shopNow, wallClock } from "./shoptime.js";
 import { getStripe, stripeConnected, stripeCurrency, verifyWebhook } from "./stripe.js";
+import { cents as dollars, recordPayment } from "./payments.js";
 
 /**
  * Pre-pay: the client pays part or all of the price when they book.
@@ -165,6 +166,8 @@ export async function markPaid(sessionId: string, paymentIntent: string | null):
     console.error("Stripe reported a payment for a checkout we do not know. Check it in Stripe.");
     return "unknown";
   }
+  // The money was taken, whatever happens to the booking. Saved once per checkout.
+  await recordPrepay(row.id, row.prepay_amount, sessionId);
   if (["paid", "refunded", "refund_due"].includes(row.prepay_status)) return "already";
   const amount = money(row.prepay_amount);
 
@@ -196,6 +199,51 @@ export async function markPaid(sessionId: string, paymentIntent: string | null):
   await note(row.id, `Pre-pay of ${amount} received. The booking is confirmed.`);
   await emitBookingEvent("prepay_paid", row.id);
   return "confirmed";
+}
+
+/** Put the pre-pay in the payments list. The same checkout is saved once. */
+async function recordPrepay(appointmentId: number, amount: number, sessionId: string): Promise<void> {
+  if (!(Number(amount) > 0)) return;
+  const saved = await recordPayment({
+    appointmentId, method: "card_online", amount: Number(amount), note: "Pre-pay, paid online.", stripeRef: sessionId,
+  });
+  if (!saved.ok) console.error("The pre-pay was not saved as a payment:", saved.error);
+}
+
+/** Card refunds already saved for a booking, as a positive number. */
+async function refundedSoFar(appointmentId: number): Promise<number> {
+  const row = await get<{ total: number }>(
+    "SELECT COALESCE(SUM(amount + tip), 0) AS total FROM payments WHERE appointment_id = ? AND kind = 'refund' AND method = 'card_online'",
+    [appointmentId]);
+  return dollars(-Number(row?.total ?? 0));
+}
+
+/**
+ * Stripe says a charge was refunded, for example from the Stripe Dashboard.
+ * `refundedCents` is the total refunded on the charge so far. Only the part we do not have yet is saved.
+ */
+export async function markChargeRefunded(chargeId: string, paymentIntent: string, refundedCents: number): Promise<"recorded" | "already" | "unknown"> {
+  if (!paymentIntent || !Number.isFinite(refundedCents) || refundedCents <= 0) return "unknown";
+  const row = await get<{ id: number; prepay_amount: number; prepay_status: string }>(
+    "SELECT id, prepay_amount, prepay_status FROM appointments WHERE stripe_payment_intent = ? ORDER BY id LIMIT 1", [paymentIntent]);
+  if (!row) return "unknown";
+  const total = dollars(refundedCents / 100);
+  const missing = dollars(total - await refundedSoFar(row.id));
+  if (missing <= 0) return "already";
+  const saved = await recordPayment({
+    appointmentId: row.id, kind: "refund", method: "card_online", amount: missing,
+    note: "Refunded in Stripe.", stripeRef: `${chargeId}:${Math.round(refundedCents)}`,
+  });
+  if (!saved.ok) {
+    console.error("A Stripe refund was not saved as a payment:", saved.error);
+    return "unknown";
+  }
+  if (saved.duplicate) return "already";
+  if (total >= dollars(Number(row.prepay_amount)) && ["paid", "refund_due"].includes(row.prepay_status)) {
+    await run("UPDATE appointments SET prepay_status = 'refunded', updated_at = utc_now() WHERE id = ?", [row.id]);
+  }
+  await note(row.id, `${money(missing)} was refunded in Stripe.`);
+  return "recorded";
 }
 
 /** Stripe says the session ended without payment. Release the time. */
@@ -248,6 +296,13 @@ export async function settlePrepayOnCancel(
     if (!stripe || !before.stripe_payment_intent) throw new Error("Stripe is not connected.");
     const refund = await stripe.refund(before.stripe_payment_intent, before.id);
     await run("UPDATE appointments SET prepay_status = 'refunded', stripe_refund_id = ? WHERE id = ?", [refund.id, before.id]);
+    const back = dollars(Number(before.prepay_amount) - await refundedSoFar(before.id));
+    if (back > 0) {
+      const saved = await recordPayment({
+        appointmentId: before.id, kind: "refund", method: "card_online", amount: back, note: "Pre-pay refunded.", stripeRef: refund.id,
+      });
+      if (!saved.ok) console.error("The refund was not saved as a payment:", saved.error);
+    }
     await note(before.id, `Pre-pay of ${amount} refunded to the client.`);
   } catch (err) {
     console.error("Stripe refund failed:", err instanceof Error ? err.message : err);
@@ -294,7 +349,7 @@ export function registerStripeRoutes(app: OpenAPIHono): void {
   /**
    * Stripe calls this. No login: the signature is the proof.
    * In Stripe, send: checkout.session.completed, checkout.session.async_payment_succeeded,
-   * checkout.session.async_payment_failed, checkout.session.expired.
+   * checkout.session.async_payment_failed, checkout.session.expired, charge.refunded.
    */
   app.post("/api/stripe/webhook", async (c) => {
     const payload = await c.req.text();
@@ -303,7 +358,7 @@ export function registerStripeRoutes(app: OpenAPIHono): void {
     if (!verifyWebhook(payload, c.req.header("stripe-signature"), secret, nowSeconds)) {
       return c.json({ error: "Bad signature." }, 400);
     }
-    let event: { type?: unknown; data?: { object?: { id?: unknown; payment_status?: unknown; payment_intent?: unknown } } };
+    let event: { type?: unknown; data?: { object?: { id?: unknown; payment_status?: unknown; payment_intent?: unknown; amount_refunded?: unknown } } };
     try {
       event = JSON.parse(payload);
     } catch {
@@ -314,7 +369,10 @@ export function registerStripeRoutes(app: OpenAPIHono): void {
     if (!sessionId) return c.json({ received: true }, 200);
     const intent = typeof session?.payment_intent === "string" ? session.payment_intent : null;
 
-    if (event.type === "checkout.session.completed") {
+    if (event.type === "charge.refunded") {
+      // Here the object is a charge, not a checkout session.
+      if (intent) await markChargeRefunded(sessionId, intent, Number(session?.amount_refunded));
+    } else if (event.type === "checkout.session.completed") {
       // A bank debit can complete before the money arrives. Wait for async_payment_succeeded then.
       if (session?.payment_status === "paid") await markPaid(sessionId, intent);
     } else if (event.type === "checkout.session.async_payment_succeeded") {
