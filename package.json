@@ -11,6 +11,7 @@
     "test": "node --import tsx --test \"src/**/*.test.ts\""
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.110",
     "@electric-sql/pglite": "^0.6.0",
     "@hono/node-server": "^2.1.11",
     "@hono/zod-openapi": "^0.18.0",
@@ -25,6 +26,7 @@
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@tailwindcss/vite": "^4.2.2",
+    "ai": "^7.0.183",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "hono": "^4.6.0",

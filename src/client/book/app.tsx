@@ -6,6 +6,7 @@ import {
   bookableDates, dayNumber, formatDuration, formatPrice, formatTime, isPhone, longDate, shortMonth, shortWeekday, weekdayOf,
 } from "./dates";
 import { ManagePage } from "./manage";
+import { ChatButton } from "./chat";
 
 type Step = "services" | "barber" | "time" | "details" | "done";
 const STEPS: Step[] = ["services", "barber", "time", "details"];
@@ -33,6 +34,7 @@ export function Page({ shopName, children }: { shopName?: string; children: Comp
           <p className="truncate font-display text-xl leading-tight text-cream">{shopName || " "}</p>
           <p className="text-xs uppercase tracking-[0.18em] text-dim">Online booking</p>
         </div>
+        <ChatButton />
       </header>
       {children}
     </div>

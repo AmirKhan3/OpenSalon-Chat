@@ -36,6 +36,12 @@ export const SettingsSchema = z.object({
   refund_window_hours: z.number().int().min(0).max(24 * 30),
   /** Minutes an unpaid booking holds its time. Stripe allows 30 minutes to 24 hours. */
   hold_minutes: z.number().int().min(30, "The hold time must be at least 30 minutes.").max(23 * 60),
+  /** The assistant's name. It signs texts to clients with it. */
+  agent_name: z.string().trim().min(1, "Enter a name for the assistant.").max(30),
+  /** Add "- <name>" at the end of the assistant's messages to clients. */
+  sign_messages: z.boolean(),
+  /** The owner's extra instructions for the assistant. */
+  agent_instructions: z.string().trim().max(2000),
 }).openapi("Settings");
 
 export type ShopSettings = z.infer<typeof SettingsSchema>;
@@ -58,6 +64,9 @@ export function defaultSettings(): ShopSettings {
     prepay_percent: 50,
     refund_window_hours: 24,
     hold_minutes: 30,
+    agent_name: "Tolly",
+    sign_messages: true,
+    agent_instructions: "",
   };
 }
 

@@ -169,7 +169,7 @@ test("the client is found by phone only, and a public booking never changes a sa
   assert.equal(JSON.stringify(byPhone.body).includes("Jamie"), false);
   // Staff get a note about the different name.
   const notes = await db.query<any>("SELECT content FROM appointment_notes ORDER BY id");
-  assert.equal(notes.some((n: any) => /Name given online: Someone Else/.test(n.content)), true);
+  assert.equal(notes.some((n: any) => /Name given by the client: Someone Else/.test(n.content)), true);
 
   // A saved email with another phone is a new client. It cannot take over the saved one.
   await db.exec("INSERT INTO clients (name, email, phone) VALUES ('No Phone', 'nophone@example.com', '')");

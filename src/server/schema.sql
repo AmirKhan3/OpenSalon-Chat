@@ -150,3 +150,37 @@ ALTER TABLE appointments ADD COLUMN IF NOT EXISTS stripe_checkout_url TEXT;
 ALTER TABLE appointments ADD COLUMN IF NOT EXISTS stripe_payment_intent TEXT;
 ALTER TABLE appointments ADD COLUMN IF NOT EXISTS stripe_refund_id TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_appointments_stripe_session ON appointments(stripe_session_id);
+
+-- Chat threads. kind 'client': a client talks with Tolly and the barbers.
+-- kind 'assistant': the barber's private chat with Tolly. Clients never see it.
+-- token: the secret a web chat keeps in the browser. phone: the number of an SMS thread.
+-- mode 'agent': Tolly answers. mode 'human': a barber answers and Tolly stays quiet.
+CREATE TABLE IF NOT EXISTS chat_threads (
+  id SERIAL PRIMARY KEY,
+  kind TEXT NOT NULL DEFAULT 'client',
+  channel TEXT NOT NULL DEFAULT 'web',
+  token TEXT UNIQUE,
+  phone TEXT,
+  client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+  display_name TEXT NOT NULL DEFAULT '',
+  mode TEXT NOT NULL DEFAULT 'agent',
+  needs_attention INTEGER NOT NULL DEFAULT 0,
+  staff_unread INTEGER NOT NULL DEFAULT 0,
+  last_message_at TEXT,
+  created_at TEXT DEFAULT utc_now(),
+  updated_at TEXT DEFAULT utc_now()
+);
+
+-- sender: client | agent | staff | system | note.
+-- 'note' is for staff only. Clients and the AI never see notes.
+-- delivery_status: for texts, 'sent' or 'failed: <reason>'. Empty for web chat.
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id SERIAL PRIMARY KEY,
+  thread_id INTEGER NOT NULL REFERENCES chat_threads(id) ON DELETE CASCADE,
+  sender TEXT NOT NULL,
+  body TEXT NOT NULL,
+  delivery_status TEXT NOT NULL DEFAULT '',
+  created_at TEXT DEFAULT utc_now()
+);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_thread ON chat_messages(thread_id, id);
+CREATE INDEX IF NOT EXISTS idx_chat_threads_phone ON chat_threads(phone);

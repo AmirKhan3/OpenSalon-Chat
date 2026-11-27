@@ -15,6 +15,8 @@ import { StaffList } from "./components/staff-list";
 import { ServiceList } from "./components/service-list";
 import { ProductList } from "./components/product-list";
 import { SettingsPage } from "./components/settings";
+import { Inbox } from "./components/inbox";
+import { AssistantPage } from "./components/assistant";
 import { ErrorBanner } from "./components/error-banner";
 
 interface AuthStatus { logged_in: boolean; login_required: boolean }
@@ -91,6 +93,8 @@ function Shell({ onLogout }: { onLogout?: () => void }) {
     if (view === "appointments" && id && appState.selectedAppointment) return <AppointmentDetail />;
     if (view === "clients" && id && appState.selectedClient) return <ClientDetail />;
     switch (view) {
+      case "inbox": return <Inbox id={id} navigate={navigate} />;
+      case "assistant": return <AssistantPage />;
       case "calendar": return <CalendarView />;
       case "appointments": return <AppointmentList />;
       case "clients": return <ClientList />;

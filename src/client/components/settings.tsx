@@ -20,6 +20,9 @@ interface ShopSettings {
   prepay_percent: number;
   refund_window_hours: number;
   hold_minutes: number;
+  agent_name: string;
+  sign_messages: boolean;
+  agent_instructions: string;
 }
 interface SettingsReply { settings: ShopSettings; stripe_connected: boolean }
 
@@ -67,6 +70,7 @@ export function SettingsPage() {
   const problem = (): string | null => {
     if (!settings.shop_name.trim()) return "Enter the shop name.";
     if (!settings.timezone.trim()) return "Enter the time zone.";
+    if (!settings.agent_name.trim()) return "Enter a name for the assistant.";
     for (let i = 0; i < 7; i++) {
       const d = settings.hours[i];
       if (!d.closed && (!d.open || !d.close || d.open >= d.close)) return `${DAYS[i]}: the closing time must be after the opening time.`;
@@ -98,6 +102,7 @@ export function SettingsPage() {
     try {
       const r = await api<SettingsReply>("PUT", "/api/settings", {
         ...settings, shop_name: settings.shop_name.trim(), timezone: settings.timezone.trim(), address: settings.address.trim(),
+        agent_name: settings.agent_name.trim(), agent_instructions: settings.agent_instructions.trim(),
       });
       setSettings(r.settings);
       setMessage({ ok: true, text: "Saved." });
@@ -245,6 +250,31 @@ export function SettingsPage() {
               </div>
             </>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle className="text-base">Assistant</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="agent-name">Name</Label>
+            <Input id="agent-name" className="max-w-xs" value={settings.agent_name} maxLength={30} onInput={(e: Event) => set({ agent_name: val(e) })} />
+          </div>
+          <label className="flex min-h-10 items-center gap-2 text-sm">
+            <input type="checkbox" className="h-4 w-4" checked={settings.sign_messages} onChange={(e) => set({ sign_messages: e.currentTarget.checked })} />
+            Sign the assistant's messages to clients, like "- {settings.agent_name.trim() || "Tolly"}"
+          </label>
+          <div className="space-y-1.5">
+            <Label htmlFor="agent-instructions">Extra instructions</Label>
+            <textarea
+              id="agent-instructions" rows={4} maxLength={2000} value={settings.agent_instructions}
+              onInput={(e) => set({ agent_instructions: e.currentTarget.value })}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+            <p className="text-xs text-muted-foreground">
+              Things the assistant should know or do. Example: "Parking is behind the shop. We do not cut kids under 5."
+            </p>
+          </div>
         </CardContent>
       </Card>
 

@@ -86,6 +86,21 @@ Set it up:
 Without `STRIPE_SECRET_KEY` there is no pre-pay, and bookings are confirmed at once.
 To test on your computer, use test keys and `stripe listen --forward-to localhost:8787/api/stripe/webhook`.
 
+## The assistant and chat
+
+Clients chat with the shop from the booking page. The assistant answers first. Its name is "Tolly" by default.
+It can list services, find open times, and book a visit. When it cannot help, it gives the chat to a barber.
+
+- Barbers read and answer chats in the dashboard at `/inbox`. "Take over" stops the assistant. "Hand back to AI" starts it again.
+- When a barber writes a reply, the assistant stops in that chat by itself.
+- Staff notes in a chat are for staff only. Clients and the assistant never see them.
+- The barber has a private chat with the assistant at `/assistant`. Clients never see it.
+- In the web chat nobody checks the phone number. So the assistant cannot look up, move, or cancel a booking there. It sends the client to the manage link.
+
+To turn the assistant on, set `AI_GATEWAY_API_KEY` (Vercel AI Gateway) or `ANTHROPIC_API_KEY`. Pick the model with `AGENT_MODEL`.
+With no key, every chat goes straight to a barber.
+Change the assistant's name, signature, and extra instructions in the dashboard under Settings.
+
 ## Settings
 
 Copy `.env.example` to `.env` and fill in what you need. Never put secrets in the code.

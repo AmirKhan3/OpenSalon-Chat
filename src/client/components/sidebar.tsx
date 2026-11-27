@@ -1,15 +1,33 @@
 import { useEffect, useState } from "preact/hooks";
 import { useApp } from "../context";
-import { Scissors, Menu, LayoutDashboard, CalendarDays, Clock, Users, UserCog, Sparkles, Package, LogOut, Settings } from "lucide-preact";
+import { Scissors, Menu, LayoutDashboard, CalendarDays, Clock, Users, UserCog, Sparkles, Package, LogOut, Settings, Inbox as InboxIcon, Bot } from "lucide-preact";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import type { View } from "../types";
+import { api } from "../api";
+
+/** How many chats wait for a barber or have new messages. */
+function useInboxCount(): { waiting: number; needsYou: boolean } {
+  const [count, setCount] = useState({ waiting: 0, needsYou: false });
+  useEffect(() => {
+    let stop = false;
+    const read = () => api<{ threads: { staff_unread: number; needs_attention: boolean }[]; needs_attention: number }>("GET", "/api/chat/threads")
+      .then((r) => { if (!stop) setCount({ waiting: r.threads.filter((t) => t.staff_unread > 0 || t.needs_attention).length, needsYou: r.needs_attention > 0 }); })
+      .catch(() => { /* the badge is a hint only */ });
+    read();
+    const timer = window.setInterval(read, 15000);
+    return () => { stop = true; window.clearInterval(timer); };
+  }, []);
+  return count;
+}
 
 const navItems: { view: View; path: string; label: string; icon: typeof LayoutDashboard }[] = [
   { view: "dashboard", path: "/", label: "Dashboard", icon: LayoutDashboard },
+  { view: "inbox", path: "/inbox", label: "Inbox", icon: InboxIcon },
+  { view: "assistant", path: "/assistant", label: "Assistant", icon: Bot },
   { view: "calendar", path: "/calendar", label: "Calendar", icon: CalendarDays },
   { view: "appointments", path: "/appointments", label: "Appointments", icon: Clock },
   { view: "clients", path: "/clients", label: "Clients", icon: Users },
@@ -21,6 +39,7 @@ const navItems: { view: View; path: string; label: string; icon: typeof LayoutDa
 
 function SidebarContent({ currentView, onNavigate, onLogout }: { currentView: View; onNavigate?: () => void; onLogout?: () => void }) {
   const { navigate, stats } = useApp();
+  const inbox = useInboxCount();
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-sidebar">
@@ -47,6 +66,9 @@ function SidebarContent({ currentView, onNavigate, onLogout }: { currentView: Vi
           >
             <item.icon className="h-4 w-4" />
             <span className="flex-1 text-left">{item.label}</span>
+            {item.view === "inbox" && inbox.waiting > 0 && (
+              <Badge variant={inbox.needsYou ? "destructive" : "default"} className="h-5 px-1.5 text-xs">{inbox.waiting}</Badge>
+            )}
             {item.view === "appointments" && stats.appointments > 0 && (
               <Badge variant="secondary" className="h-5 px-1.5 text-xs">{stats.appointments}</Badge>
             )}
