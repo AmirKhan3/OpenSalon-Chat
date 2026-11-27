@@ -51,6 +51,15 @@ Set `SESSION_SECRET` too, so logins survive a restart.
 - Always set `NODE_ENV=production` on a real server.
 - Logging out clears the cookie in that browser. To end every login at once, change `STAFF_PASSWORD` or `SESSION_SECRET`.
 
+## Client booking page
+
+Clients book at `/book` (in development: `http://localhost:5173/book`). They pick services, a barber, and a time.
+Each booking gets a private link (`/book/manage/...`) where the client can see or cancel it.
+
+In the dashboard, open **Settings** to set the shop name, time zone, address, opening hours,
+how often times start, the minimum notice, and how many days ahead clients can book.
+All times are stored in shop time. `SHOP_TIMEZONE` is the time zone used until you save one.
+
 ## Settings
 
 Copy `.env.example` to `.env` and fill in what you need. Never put secrets in the code.

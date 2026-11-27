@@ -49,7 +49,6 @@ export function createServerApp(): Hono {
   root.get("*", (c) => {
     if (extname(c.req.path) !== "") return c.text("Not found", 404);
     const isBooking = c.req.path === "/book" || c.req.path.startsWith("/book/");
-    // The booking page arrives in a later step. Until then, show the dashboard.
     const html = (isBooking ? page("book.html") : null) ?? page("index.html");
     if (!html) return c.html(NOT_BUILT, 503);
     return c.html(html);

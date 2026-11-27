@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "tolly-dev", "runtimeExecutable": "sh", "runtimeArgs": ["-c", "PORT=8787 pnpm dev"], "port": 5173 }
+  ]
+}

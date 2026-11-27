@@ -113,6 +113,20 @@ CREATE TABLE IF NOT EXISTS _meta (
   value TEXT NOT NULL
 );
 
+-- Shop settings. Each value is JSON.
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT DEFAULT utc_now()
+);
+
+-- Columns added after the first version.
+-- public_token: the secret in the client's manage link.
+-- source: who made the booking (staff | online | chat | sms).
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS public_token TEXT;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'staff';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_appointments_public_token ON appointments(public_token);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_appointments_client ON appointments(client_id);
 CREATE INDEX IF NOT EXISTS idx_appointments_staff ON appointments(staff_id);

@@ -1,8 +1,12 @@
+import { HTTPException } from "hono/http-exception";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { query, get, run } from "./db.js";
 import { findConflicts, describeConflicts, toMinutes, type Busy } from "./scheduling.js";
 import { ensureSeeded } from "./seed.js";
 import { oneAtATime } from "./lock.js";
+import { addMinutes, busyFor, nextIdentifier } from "./booking.js";
+import { registerSettingsRoutes } from "./settings.js";
+import { registerPublicRoutes } from "./public.js";
 import { registerAuthRoutes, requireStaff } from "./auth.js";
 
 const app = new OpenAPIHono({
@@ -18,6 +22,10 @@ const app = new OpenAPIHono({
 
 app.onError((err, c) => {
   // Postgres: the row points at something that does not exist / a number is too big.
+  // Hono: a body that is not valid JSON, and similar request problems.
+  if (err instanceof HTTPException && err.status >= 400 && err.status < 500) {
+    return c.json({ error: err.status === 400 ? "The request could not be read. Check the data and try again." : err.message || "Bad request" }, err.status);
+  }
   const code = (err as { code?: string }).code;
   if (code === "23503") return c.json({ error: "That client, barber, or service does not exist." }, 400);
   if (code === "22003") return c.json({ error: "A number is too large." }, 400);
@@ -45,7 +53,7 @@ app.get("/api/health", (c) => c.json({ ok: true }));
 // Booking writes check for overlaps and then save. Run them one at a time,
 // so two requests at the same moment cannot both take the same slot.
 app.use("/api/*", async (c, next) => {
-  const write = c.req.method !== "GET" && /^\/api\/(appointments|blocked-slots)(\/|$)/.test(c.req.path);
+  const write = c.req.method !== "GET" && /^\/api\/(appointments|blocked-slots|public\/bookings)(\/|$)/.test(c.req.path);
   if (write) await oneAtATime(next);
   else await next();
 });
@@ -177,59 +185,6 @@ const ProductSchema = z.object({
 const IdParam = z.object({ id: z.string().regex(/^\d{1,9}$/, "Must be a number").openapi({ description: "Resource ID" }) });
 
 // ── Helpers ────────────────────────────────────────────────────────
-
-async function nextIdentifier(): Promise<string> {
-  const prefix = await get<{ value: string }>("SELECT value FROM _meta WHERE key = 'appointment_prefix'");
-  // One statement, so two requests at the same moment never get the same number.
-  // It also creates the counter row if it is missing.
-  const rows = await query<{ value: string }>(
-    `INSERT INTO _meta (key, value) VALUES ('appointment_counter', '1')
-     ON CONFLICT (key) DO UPDATE SET value = (COALESCE(NULLIF(regexp_replace(_meta.value, '\\D', '', 'g'), ''), '0')::bigint + 1)::text
-     RETURNING value`,
-  );
-  return `${prefix?.value || "APT"}-${rows[0].value}`;
-}
-
-function addMinutes(time: string, minutes: number): string {
-  const [h, m] = time.split(":").map(Number);
-  const total = h * 60 + m + minutes;
-  const hh = Math.floor(total / 60) % 24;
-  const mm = total % 60;
-  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
-}
-
-/**
- * What already occupies `staffId` on `date`: their other appointments, plus any
- * time blocked off for lunch, holiday and the like.
- *
- * Cancelled appointments free the chair, and are the one status left out. That
- * matches what `/api/calendar` draws, so the rule an owner sees is simply
- * "if it is on the calendar, it is taken".
- */
-async function busyFor(staffId: number, date: string, excludeAppointmentId?: number): Promise<Busy[]> {
-  const appts = await query<{ start_time: string; end_time: string; client_name: string | null }>(
-    `SELECT a.start_time, a.end_time, cl.name as client_name
-     FROM appointments a
-     LEFT JOIN clients cl ON cl.id = a.client_id
-     WHERE a.staff_id = ? AND a.scheduled_date = ? AND a.status != 'cancelled'
-       ${excludeAppointmentId ? "AND a.id != ?" : ""}`,
-    excludeAppointmentId ? [staffId, date, excludeAppointmentId] : [staffId, date],
-  );
-  const blocks = await query<{ start_time: string; end_time: string; reason: string | null }>(
-    "SELECT start_time, end_time, reason FROM blocked_slots WHERE staff_id = ? AND blocked_date = ?",
-    [staffId, date],
-  );
-  return [
-    ...appts.map((a): Busy => ({
-      kind: "appointment", start_time: a.start_time, end_time: a.end_time,
-      label: a.client_name || "another booking",
-    })),
-    ...blocks.map((b): Busy => ({
-      kind: "blocked", start_time: b.start_time, end_time: b.end_time,
-      label: b.reason || "blocked",
-    })),
-  ];
-}
 
 /** The staff member's name, for the conflict message. */
 async function staffName(staffId: number): Promise<string> {
@@ -1219,5 +1174,8 @@ app.openapi(deleteProduct, async (c) => {
   await run("DELETE FROM products WHERE id = ?", [id]);
   return c.json({ ok: true }, 200);
 });
+
+registerSettingsRoutes(app);
+registerPublicRoutes(app);
 
 export default app;

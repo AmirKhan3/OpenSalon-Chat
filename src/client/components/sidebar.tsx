@@ -1,6 +1,6 @@
 import { useEffect, useState } from "preact/hooks";
 import { useApp } from "../context";
-import { Scissors, Menu, LayoutDashboard, CalendarDays, Clock, Users, UserCog, Sparkles, Package, LogOut } from "lucide-preact";
+import { Scissors, Menu, LayoutDashboard, CalendarDays, Clock, Users, UserCog, Sparkles, Package, LogOut, Settings } from "lucide-preact";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +16,7 @@ const navItems: { view: View; path: string; label: string; icon: typeof LayoutDa
   { view: "staff", path: "/staff", label: "Staff", icon: UserCog },
   { view: "services", path: "/services", label: "Services", icon: Sparkles },
   { view: "products", path: "/products", label: "Products", icon: Package },
+  { view: "settings", path: "/settings", label: "Settings", icon: Settings },
 ];
 
 function SidebarContent({ currentView, onNavigate, onLogout }: { currentView: View; onNavigate?: () => void; onLogout?: () => void }) {
