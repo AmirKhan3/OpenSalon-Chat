@@ -253,3 +253,12 @@ CREATE INDEX IF NOT EXISTS idx_payments_appointment ON payments(appointment_id);
 -- calendar_token: the secret in a barber's calendar feed link.
 ALTER TABLE staff ADD COLUMN IF NOT EXISTS calendar_token TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_staff_calendar_token ON staff(calendar_token);
+
+-- Rate limits (web chat, wrong passwords). In the database, so all servers share them.
+-- key: "<limit name>:<address>". reset_at: when the window ends, in milliseconds.
+CREATE TABLE IF NOT EXISTS rate_limits (
+  key TEXT PRIMARY KEY,
+  count INTEGER NOT NULL DEFAULT 0,
+  reset_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_rate_limits_reset_at ON rate_limits(reset_at);

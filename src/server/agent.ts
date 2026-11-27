@@ -6,6 +6,7 @@ import { money, publicPrepayPolicy } from "./prepay.js";
 import { addMessage, assistantThread, getThread, handToBarber, messagesForAgent, type Message, type Thread } from "./chatstore.js";
 import { clientTools, DAYS, type ClientContext } from "./clienttools.js";
 import { MAX_TEXTS_PER_REQUEST, MAX_TEXTS_PER_RUN, staffTools } from "./stafftools.js";
+import { keepAlive } from "./background.js";
 
 /**
  * Tolly, the AI assistant.
@@ -196,6 +197,8 @@ export function kickAgent(threadId: number, baseUrl: string): void {
       running.delete(threadId);
     }
   })();
+  // On a serverless host, the function must stay awake until the answer is sent.
+  keepAlive(state.done);
 }
 
 async function runOnce(threadId: number, baseUrl: string, state: RunState): Promise<void> {

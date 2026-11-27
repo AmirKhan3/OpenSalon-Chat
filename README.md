@@ -37,7 +37,8 @@ Tolly is a fork of [OpenSalon](https://github.com/clawnify/OpenSalon) (MIT, Copy
 The order of work is: **client -> Tolly -> barber**. Tolly answers first. When it cannot help, it gives the chat to a barber.
 When a barber writes in a chat, Tolly stops in that chat until the barber hands it back.
 
-One server process does everything: the API, the built web app, and the timers for automations and unpaid holds.
+On a normal server, one process does everything: the API, the built web app, and the timers for automations and unpaid holds.
+On Vercel, the API runs as a function, the web app is served as static files, and a schedule runs the timers. See [Deploy on Vercel](#deploy-on-vercel).
 
 ## Run it on your computer
 
@@ -192,9 +193,45 @@ Good to know:
 
 - Serve it over **https**. Put a proxy in front (Caddy, nginx, or your host's own), and make sure the server port can be reached only through that proxy.
 - Without `TRUST_PROXY`, every visitor behind the proxy looks like one address. They then share one login limit and one web chat limit.
-- Run **one** container. The login limit, the chat limit, and the timers for automations live in that one process.
+- Run **one** container. The login limit and the chat limit are kept in the database, but the assistant's queue for each chat lives in that one process.
 - The health check is `GET /api/health`.
 - Without Docker: `pnpm install`, `pnpm build`, then `NODE_ENV=production pnpm start` does the same.
+
+## Deploy on Vercel
+
+Tolly also runs on Vercel. [vercel.json](vercel.json) holds the whole setup:
+
+- `pnpm build` makes the web app. Vercel serves it as static files.
+- [api/index.ts](api/index.ts) is one function for all of `/api/*`.
+- [api/tick.ts](api/tick.ts) is a private function. The schedule `tick` runs it every minute. It releases unpaid holds, runs the automations, and cleans up.
+
+Steps:
+
+1. Import the repository in Vercel. Keep the settings from `vercel.json`.
+2. Add a Postgres database from the Vercel Marketplace (for example Neon). Use its **pooled** connection string as `DATABASE_URL`.
+3. Set these in the project's environment variables. Without the first three, the API answers "Tolly is not set up yet."
+
+| Variable | Why |
+| --- | --- |
+| `DATABASE_URL` | Required. There is no embedded database on Vercel. |
+| `STAFF_PASSWORD` | Required. Protects the dashboard. |
+| `SESSION_SECRET` | Required. All functions must sign the login cookie with the same key. |
+| `PUBLIC_URL` | The https address of the deployment or your own domain. |
+| `SEED_DEMO_DATA` | Set it to `false`, or the first request adds the sample barbers and services. |
+| `SHOP_TIMEZONE` | The shop's time zone, until you save one in Settings. |
+
+4. Add the keys for texts, Stripe, and the AI. Point the Telnyx and Stripe webhooks at the Vercel address.
+5. Deploy.
+
+Good to know:
+
+- **The schedule runs every minute. That needs a Pro plan.** On Hobby, a schedule can run every 15 minutes at most, and the deploy may fail. Change `schedule` in `vercel.json` to `*/15 * * * *` there. Reminders and the release of unpaid holds are then up to 15 minutes late (more with Vercel's jitter).
+- Leave `TRUST_PROXY` and `CRON_SECRET` empty.
+- Tolly creates its tables on the first request.
+- Bookings are safe when many functions run at once: every booking write takes a lock in the database. The login limit and the chat limit are in the database too.
+- The assistant answers after the request ends. A function can run for 5 minutes at most (`maxDuration` in `vercel.json`).
+- Each function keeps its own queue per chat. If two texts from one client reach two functions at the same moment, Tolly may answer each of them by itself.
+- `pnpm start` and the Dockerfile still work the same as before.
 
 ## Using it
 

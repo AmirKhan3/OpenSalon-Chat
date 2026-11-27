@@ -9,9 +9,7 @@ import app from "./index.js";
 import { closeDB, initDB } from "./db.js";
 import { ensureSeeded } from "./seed.js";
 import { checkAuthConfig } from "./auth.js";
-import { oneAtATime } from "./lock.js";
-import { releaseExpiredHolds } from "./prepay.js";
-import { tick } from "./automations.js";
+import { runTimers } from "./cron.js";
 
 /**
  * The Node server: the API plus the built web app from dist/.
@@ -73,13 +71,10 @@ async function main(): Promise<void> {
     const where = db === "" || db.startsWith("pglite:") ? "embedded PGlite" : "Postgres";
     console.log(`Tolly is running at http://localhost:${info.port} (database: ${where})`);
   });
-  // Every minute: release bookings whose pre-pay was not paid in time.
+  // Every minute: release bookings whose pre-pay was not paid in time, run the
+  // automations whose moment came, and delete rate limit rows that ended.
   setInterval(() => {
-    oneAtATime(releaseExpiredHolds).catch((err) => console.error("Could not release holds:", err instanceof Error ? err.message : err));
-  }, 60_000).unref();
-  // Every minute: run the automations whose moment came.
-  setInterval(() => {
-    tick().catch((err) => console.error("Automations failed:", err instanceof Error ? err.message : err));
+    runTimers().catch((err) => console.error("The timers failed:", err instanceof Error ? err.message : err));
   }, 60_000).unref();
   const stop = () => {
     server.close(() => {

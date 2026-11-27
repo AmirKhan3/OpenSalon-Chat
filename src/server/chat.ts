@@ -172,7 +172,7 @@ export function registerChatRoutes(app: OpenAPIHono): void {
   // ── Public ──
   app.openapi(publicSendRoute, async (c) => {
     const { token, message } = c.req.valid("json");
-    if (chatLimit.hit(clientIp(c)) > 0) {
+    if ((await chatLimit.hit(clientIp(c))) > 0) {
       return c.json({ error: "You are sending messages too fast. Wait a minute, then try again." }, 429);
     }
     // An unknown token starts a new chat. It never opens someone else's.

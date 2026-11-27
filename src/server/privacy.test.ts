@@ -19,7 +19,7 @@ const { setShopClock } = await import("./shoptime.js");
 const agent = await import("./agent.js");
 const auth = await import("./auth.js");
 const chatstore = await import("./chatstore.js");
-const { chatLimit, CHAT_MAX_PER_MINUTE, MAX_KEYS, rateLimit, setRateClock } = await import("./ratelimit.js");
+const { chatLimit, CHAT_MAX_PER_MINUTE, cleanRateLimits, rateLimit, setRateClock } = await import("./ratelimit.js");
 const { clientTools } = await import("./clienttools.js");
 const { staffTools } = await import("./stafftools.js");
 
@@ -27,7 +27,6 @@ after(async () => {
   await agent.agentIdle();
   agent.setAgentModel();
   setRateClock();
-  auth.resetLoginLimits();
   delete process.env.STAFF_PASSWORD;
   delete process.env.TRUST_PROXY;
   await db.closeDB();
@@ -48,8 +47,7 @@ beforeEach(async () => {
   delete process.env.TRUST_PROXY;
   setShopClock(() => new Date(NOW));
   setRateClock();
-  chatLimit.reset();
-  auth.resetLoginLimits();
+  // A new database also clears the chat limit and the login limit.
   await db.resetDB("pglite:memory");
   await db.exec(`
     INSERT INTO staff (name, title, color) VALUES ('Marcus', 'Owner', '#111111'), ('Dre', 'Barber', '#222222');
@@ -290,32 +288,56 @@ test("PRIVACY: the public chat is rate limited per address", async () => {
   await agent.agentIdle();
 });
 
-test("the rate limit counts per key and per window", () => {
+test("the rate limit counts per key and per window", async () => {
   let time = 0;
   setRateClock(() => time);
-  const limit = rateLimit(2, 1000);
-  assert.equal(limit.hit("a"), 0);
-  assert.equal(limit.hit("a"), 0);
-  assert.equal(limit.hit("a"), 1000);
-  assert.equal(limit.hit("b"), 0);
+  const limit = rateLimit("test", 2, 1000);
+  assert.equal(await limit.hit("a"), 0);
+  assert.equal(await limit.hit("a"), 0);
+  assert.equal(await limit.hit("a"), 1000);
+  assert.equal(await limit.hit("b"), 0);
   time = 400;
-  assert.equal(limit.hit("a"), 600);
+  assert.equal(await limit.hit("a"), 600);
   time = 1000;
-  assert.equal(limit.hit("a"), 0);
-  limit.reset();
-  assert.equal(limit.hit("a"), 0);
+  assert.equal(await limit.hit("a"), 0);
+  await limit.reset();
+  assert.equal(await limit.hit("a"), 0);
 });
 
-test("the rate limit does not grow without end", () => {
+test("two limits do not share their counts, and reset clears only its own", async () => {
+  setRateClock(() => 0);
+  const one = rateLimit("one", 1, 1000);
+  const two = rateLimit("two", 1, 1000);
+  assert.equal(await one.hit("a"), 0);
+  assert.equal(await two.hit("a"), 0);
+  assert.equal(await one.hit("a"), 1000);
+  await two.reset();
+  assert.equal(await two.hit("a"), 0);
+  assert.equal(await one.hit("a"), 1000);
+  // The web chat limit is one more limit of its own.
+  assert.equal(await chatLimit.hit("a"), 0);
+});
+
+test("hits at the same moment are all counted", async () => {
+  setRateClock(() => 0);
+  const limit = rateLimit("burst", 3, 1000);
+  const waits = await Promise.all(Array.from({ length: 10 }, () => limit.hit("a")));
+  assert.equal(waits.filter((w) => w === 0).length, 3);
+});
+
+test("the rate limit table does not grow without end", async () => {
   let time = 0;
   setRateClock(() => time);
-  const limit = rateLimit(1, 1000);
-  assert.equal(limit.hit("first"), 0);
-  assert.equal(limit.hit("first"), 1000);
-  for (let i = 0; i < MAX_KEYS + 50; i++) assert.equal(limit.hit(`address-${i}`), 0);
-  // The newest addresses are still counted. The oldest one was forgotten.
-  assert.equal(limit.hit(`address-${MAX_KEYS + 49}`), 1000);
-  assert.equal(limit.hit("first"), 0);
+  const limit = rateLimit("test", 1, 1000);
+  for (let i = 0; i < 30; i++) assert.equal(await limit.hit(`address-${i}`), 0);
+  time = 500;
+  assert.equal(await limit.hit("late"), 0);
+  assert.equal((await db.query("SELECT key FROM rate_limits")).length, 31);
+  // Windows that ended are deleted. The one that still runs stays.
+  time = 1000;
+  assert.equal(await cleanRateLimits(), 30);
+  assert.deepEqual(await db.query("SELECT key FROM rate_limits"), [{ key: "test:late" }]);
+  assert.equal(await limit.hit("late"), 500);
 });
 
 test("PRIVACY: login is rate limited, and a locked-out caller gets no staff data", async () => {

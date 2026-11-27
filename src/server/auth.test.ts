@@ -17,8 +17,10 @@ beforeEach(async () => {
   process.env.SESSION_SECRET = "test-session-secret";
   delete process.env.NODE_ENV;
   delete process.env.TRUST_PROXY;
-  auth.resetLoginLimits();
+  delete process.env.VERCEL;
+  delete process.env.CRON_SECRET;
   auth.setAuthClock();
+  // A new database also clears the login limits.
   await db.resetDB("pglite:memory");
 });
 
@@ -110,12 +112,12 @@ test("a new password or a new secret ends old sessions", async () => {
 test("open routes stay open: health, auth, public, and provider webhooks", async () => {
   assert.equal((await app.request("/api/health")).status, 200);
   assert.deepEqual(await (await app.request("/api/auth/me")).json(), { logged_in: false, login_required: true });
-  for (const path of ["/api/health", "/api/auth/me", "/api/auth/login", "/api/public/shop", "/api/public/bookings/abc", "/api/stripe/webhook", "/api/sms/telnyx", "/api/sms/twilio"]) {
+  for (const path of ["/api/health", "/api/auth/me", "/api/auth/login", "/api/public/shop", "/api/public/bookings/abc", "/api/stripe/webhook", "/api/sms/telnyx", "/api/sms/twilio", "/api/cron/tick"]) {
     assert.equal(auth.isOpenPath(path), true, path);
     assert.notEqual((await app.request(path)).status, 401, path);
   }
   // Look-alike paths are not open.
-  for (const path of ["/api/public", "/api/publicity", "/api/healthz", "/api/auth", "/api/stripe/webhook/x", "/api/sms/other", "/api/clients/public/1"]) {
+  for (const path of ["/api/public", "/api/publicity", "/api/healthz", "/api/auth", "/api/stripe/webhook/x", "/api/sms/other", "/api/clients/public/1", "/api/cron", "/api/cron/tick/x", "/api/cron/other"]) {
     assert.equal(auth.isOpenPath(path), false, path);
     assert.equal((await app.request(path)).status, 401, path);
   }
@@ -169,7 +171,7 @@ test("the limit is per IP, and X-Forwarded-For counts only behind a trusted prox
   }
   assert.equal((await login("correct horse", { "x-forwarded-for": "10.9.9.9" })).status, 429);
 
-  auth.resetLoginLimits();
+  await auth.resetLoginLimits();
   process.env.TRUST_PROXY = "1";
   for (let i = 0; i < auth.MAX_LOGIN_TRIES; i++) {
     assert.equal((await login("wrong", { "x-forwarded-for": "203.0.113.5" })).status, 401);
@@ -214,4 +216,22 @@ test("the full server keeps the login rules and still serves pages", async () =>
   // Pages load without a login. The dashboard page then shows the login screen.
   const page = await server.request("/");
   assert.ok(page.status === 200 || page.status === 503);
+});
+
+test("wrong passwords at the same moment cannot get past the limit", async () => {
+  const all = await Promise.all(Array.from({ length: 20 }, () => login("wrong")));
+  assert.equal(all.filter((r) => r.status === 401).length, auth.MAX_LOGIN_TRIES);
+  assert.equal(all.filter((r) => r.status === 429).length, 20 - auth.MAX_LOGIN_TRIES);
+  assert.equal((await login("correct horse")).status, 429);
+});
+
+test("on Vercel the caller's address comes from the proxy header, with no TRUST_PROXY", async () => {
+  process.env.VERCEL = "1";
+  // Five wrong tries from one address lock that address only.
+  for (let i = 0; i < 5; i++) assert.equal((await login("wrong", { "x-forwarded-for": "203.0.113.7" })).status, 401);
+  assert.equal((await login("correct horse", { "x-forwarded-for": "203.0.113.7" })).status, 429);
+  assert.equal((await login("correct horse", { "x-forwarded-for": "203.0.113.8" })).status, 200);
+  // TRUST_PROXY=0 still turns it off.
+  process.env.TRUST_PROXY = "0";
+  assert.equal((await login("correct horse", { "x-forwarded-for": "203.0.113.9" })).status, 200);
 });

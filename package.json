@@ -26,6 +26,8 @@
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@tailwindcss/vite": "^4.2.2",
+    "@vercel/functions": "^3.11.4",
+    "@vercel/schedules": "^0.0.3",
     "ai": "^7.0.183",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",

@@ -16,6 +16,7 @@ import { utcStamp } from "./shoptime.js";
 import { registerPublicRoutes } from "./public.js";
 import { registerStripeRoutes, settlePrepayOnStaffChange } from "./prepay.js";
 import { registerAuthRoutes, requireStaff } from "./auth.js";
+import { registerCronRoutes } from "./cron.js";
 
 const app = new OpenAPIHono({
   // A request that fails validation gets 400 { error }.
@@ -59,6 +60,9 @@ app.doc("/api/openapi.json", {
 });
 
 app.get("/api/health", (c) => c.json({ ok: true }));
+
+// The every-minute work, for hosts with no timer (Vercel). Needs CRON_SECRET.
+registerCronRoutes(app);
 
 // Booking writes check for overlaps and then save. Run them one at a time,
 // so two requests at the same moment cannot both take the same slot.

@@ -4,6 +4,6 @@
     "lib": ["ESNext"],
     "types": ["node"]
   },
-  "include": ["src/server/**/*.ts"],
+  "include": ["src/server/**/*.ts", "api/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

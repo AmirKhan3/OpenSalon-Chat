@@ -2,6 +2,7 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypt
 import type { Context, MiddlewareHandler } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { createRoute, z, type OpenAPIHono } from "@hono/zod-openapi";
+import { countHit, forgetHits, forgetHitsLike } from "./ratelimit.js";
 
 /**
  * Staff login: one shared password (STAFF_PASSWORD) and a signed session cookie.
@@ -118,6 +119,8 @@ export function clientIp(c: Context): string {
 
 function trustedProxyHops(): number {
   const raw = (process.env.TRUST_PROXY ?? "").trim().toLowerCase();
+  // Vercel is always one proxy in front, and it sets the header itself.
+  if (raw === "" && process.env.VERCEL) return 1;
   if (raw === "" || raw === "false" || raw === "0") return 0;
   if (raw === "true") return 1;
   const n = Number(raw);
@@ -126,33 +129,23 @@ function trustedProxyHops(): number {
 
 // ── Wrong-password limit ───────────────────────────────────────────
 
-interface Tries { count: number; lockedUntil: number; lastAt: number }
-const tries = new Map<string, Tries>();
+// Counted in the database, so all servers share the count.
+const loginKey = (ip: string): string => `login:${ip}`;
 
 /** Tests only. */
-export function resetLoginLimits(): void {
-  tries.clear();
+export function resetLoginLimits(): Promise<void> {
+  return forgetHitsLike("login:");
 }
 
-/** Milliseconds this IP must still wait, or 0. */
-function waitFor(ip: string): number {
-  const t = tries.get(ip);
-  if (!t) return 0;
-  if (t.lockedUntil > now()) return t.lockedUntil - now();
-  if (t.lockedUntil !== 0 || now() - t.lastAt > LOGIN_WAIT_MS) tries.delete(ip);
-  return 0;
-}
-
-function recordWrongPassword(ip: string): void {
-  // Keep the map small if someone sends tries from many addresses.
-  if (tries.size > 10_000) {
-    for (const [key, t] of tries) if (t.lockedUntil <= now()) tries.delete(key);
-  }
-  const t = tries.get(ip) ?? { count: 0, lockedUntil: 0, lastAt: 0 };
-  t.count += 1;
-  t.lastAt = now();
-  if (t.count >= MAX_LOGIN_TRIES) t.lockedUntil = now() + LOGIN_WAIT_MS;
-  tries.set(ip, t);
+/**
+ * Count one login try. Returns the milliseconds this IP must still wait, or 0.
+ * The try is counted before the password is checked, so many tries at the
+ * same moment cannot get past the limit.
+ */
+async function countLoginTry(ip: string): Promise<number> {
+  const time = now();
+  const { count, resetAt } = await countHit(loginKey(ip), time, LOGIN_WAIT_MS, MAX_LOGIN_TRIES);
+  return count > MAX_LOGIN_TRIES ? Math.max(1, resetAt - time) : 0;
 }
 
 // ── Middleware ─────────────────────────────────────────────────────
@@ -161,6 +154,8 @@ function recordWrongPassword(ip: string): void {
 export function isOpenPath(path: string): boolean {
   return (
     path === "/api/health" ||
+    // The host's cron. It checks CRON_SECRET instead.
+    path === "/api/cron/tick" ||
     path.startsWith("/api/auth/") ||
     path.startsWith("/api/public/") ||
     // Provider webhooks. They check the provider's signature instead.
@@ -213,11 +208,11 @@ const meRoute = createRoute({
 });
 
 export function registerAuthRoutes(app: OpenAPIHono): void {
-  app.openapi(loginRoute, (c) => {
+  app.openapi(loginRoute, async (c) => {
     if (!loginRequired()) return c.json({ logged_in: true, login_required: false }, 200);
 
     const ip = clientIp(c);
-    const wait = waitFor(ip);
+    const wait = await countLoginTry(ip);
     if (wait > 0) {
       const minutes = Math.ceil(wait / 60_000);
       c.header("Retry-After", String(Math.ceil(wait / 1000)));
@@ -225,12 +220,9 @@ export function registerAuthRoutes(app: OpenAPIHono): void {
     }
 
     const { password } = c.req.valid("json");
-    if (!safeEqual(password, staffPassword())) {
-      recordWrongPassword(ip);
-      return c.json({ error: "Wrong password." }, 401);
-    }
+    if (!safeEqual(password, staffPassword())) return c.json({ error: "Wrong password." }, 401);
 
-    tries.delete(ip);
+    await forgetHits(loginKey(ip));
     setCookie(c, SESSION_COOKIE, createSessionValue(), {
       httpOnly: true,
       sameSite: "Lax",

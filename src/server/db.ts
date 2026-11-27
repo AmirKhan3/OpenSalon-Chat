@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -21,6 +21,63 @@ interface Driver {
   query(sql: string, params: unknown[]): Promise<{ rows: Record<string, unknown>[]; affectedRows: number }>;
   exec(sql: string): Promise<void>;
   close(): Promise<void>;
+  /** Postgres only: run a task while this server holds the booking lock. */
+  lock?<T>(task: () => Promise<T>): Promise<T>;
+  /** True when other servers can use the same database at the same time. */
+  shared: boolean;
+}
+
+/** Advisory lock keys. Any fixed numbers work; they only have to differ. */
+export const BOOKING_LOCK_KEY = 7_055_901;
+const SCHEMA_LOCK_KEY = 7_055_902;
+
+/** The part of a `pg` client that the booking lock needs. */
+export interface LockClient {
+  query(sql: string, params?: unknown[]): Promise<unknown>;
+  /** Give the connection back. Pass true to throw it away instead. */
+  release(destroy?: boolean): void;
+}
+
+/**
+ * Hold the booking lock on one connection while a task runs.
+ *
+ * The lock lives in a transaction, so it also works through a connection
+ * pooler (PgBouncer, Neon) in transaction mode. The task's own queries use
+ * other connections. The lock ends when the transaction ends, also when the
+ * connection is lost.
+ */
+export async function runLocked<T>(connect: () => Promise<LockClient>, task: () => Promise<T>): Promise<T> {
+  const client = await connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock($1::bigint)", [BOOKING_LOCK_KEY]);
+  } catch (err) {
+    client.release(true);
+    throw err;
+  }
+  try {
+    return await task();
+  } finally {
+    try {
+      await client.query("COMMIT");
+      client.release();
+    } catch {
+      client.release(true);
+    }
+  }
+}
+
+type PoolHook = (pool: unknown) => void;
+let poolHook: PoolHook | null = null;
+
+/** The host can watch the connection pool (Vercel closes idle connections before it pauses a function). */
+export function setPoolHook(hook: PoolHook | null): void {
+  poolHook = hook;
+}
+
+/** True when the code runs on Vercel. */
+export function onVercel(): boolean {
+  return Boolean(process.env.VERCEL);
 }
 
 const INT8 = 20;
@@ -93,10 +150,27 @@ async function pgDriver(url: string): Promise<Driver> {
   const pg = (await import("pg")).default;
   pg.types.setTypeParser(INT8, (v: string) => Number(v));
   pg.types.setTypeParser(NUMERIC, (v: string) => parseFloat(v));
-  const pool = new pg.Pool({ connectionString: url });
+  // On Vercel many small servers share the database, so each one keeps few connections and drops idle ones fast.
+  const pool = new pg.Pool(onVercel() ? { connectionString: url, max: 5, idleTimeoutMillis: 5000 } : { connectionString: url });
   // An idle client that loses its connection must not crash the server.
   pool.on("error", (err: Error) => console.error("[db] idle client error:", err.message));
+  poolHook?.(pool);
+  const connect = async (): Promise<LockClient> => {
+    const client = await pool.connect();
+    // A client in use that loses its connection must not crash the server either.
+    const quiet = (): void => undefined;
+    client.on("error", quiet);
+    return {
+      query: (sql, params) => client.query(sql, params as unknown[]),
+      release(destroy) {
+        client.removeListener("error", quiet);
+        client.release(destroy);
+      },
+    };
+  };
   return {
+    shared: true,
+    lock: (task) => runLocked(connect, task),
     async query(sql, params) {
       const r = await pool.query(sql, params);
       return { rows: r.rows ?? [], affectedRows: r.rowCount ?? 0 };
@@ -121,6 +195,7 @@ async function pgliteDriver(target: string): Promise<Driver> {
   await db.waitReady;
   const parsers = { [INT8]: (v: string) => Number(v), [NUMERIC]: (v: string) => parseFloat(v) };
   return {
+    shared: false,
     async query(sql, params) {
       const r = await db.query<Record<string, unknown>>(sql, params, { parsers });
       return { rows: r.rows ?? [], affectedRows: r.affectedRows ?? 0 };
@@ -136,17 +211,25 @@ async function pgliteDriver(target: string): Promise<Driver> {
 
 function schemaSql(): string {
   const here = dirname(fileURLToPath(import.meta.url));
-  return readFileSync(resolve(here, "schema.sql"), "utf8");
+  const beside = resolve(here, "schema.sql");
+  // A bundler (Vercel) can move this module. The file is then still at its path in the project.
+  return readFileSync(existsSync(beside) ? beside : resolve(process.cwd(), "src/server/schema.sql"), "utf8");
 }
 
 async function open(url: string | undefined): Promise<Driver> {
   const target = (url ?? "").trim();
   let driver: Driver;
-  if (target === "" ) driver = await pgliteDriver("./.data/pglite");
+  if (target === "" && onVercel()) {
+    throw new Error("DATABASE_URL is not set. On Vercel, Tolly needs a Postgres database.");
+  }
+  if (target === "") driver = await pgliteDriver("./.data/pglite");
   else if (target.startsWith("pglite:")) driver = await pgliteDriver(target.slice("pglite:".length) || "memory");
   else driver = await pgDriver(target);
   // The schema is idempotent. Apply it on every start.
-  await driver.exec(schemaSql());
+  // Two servers can start at the same moment. The lock makes them apply it one after the other.
+  // (Statements sent together run in one transaction, and the lock ends with it.)
+  const first = driver.shared ? `SELECT pg_advisory_xact_lock(${SCHEMA_LOCK_KEY});\n` : "";
+  await driver.exec(first + schemaSql());
   return driver;
 }
 
@@ -173,6 +256,15 @@ export async function closeDB(): Promise<void> {
 export async function resetDB(url = "pglite:memory"): Promise<void> {
   await closeDB();
   await initDB(url);
+}
+
+/**
+ * Run a task while this server holds the booking lock in the database.
+ * With embedded PGlite there is only one server, so the task just runs.
+ */
+export async function withDbLock<T>(task: () => Promise<T>): Promise<T> {
+  const db = await initDB();
+  return db.lock ? db.lock(task) : task();
 }
 
 /** Run a query and return all rows. */

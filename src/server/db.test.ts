@@ -121,3 +121,61 @@ test("the server sends the API, pages, and only extension paths to static files"
     assert.match(res.headers.get("content-type") ?? "", /text\/html/);
   }
 });
+
+// ── The booking lock (Postgres) ────────────────────────────────────
+
+function fakeLockClient(failOn?: string) {
+  const log: string[] = [];
+  const client: import("./db.js").LockClient = {
+    async query(sql) {
+      const word = sql.startsWith("SELECT pg_advisory_xact_lock") ? "LOCK" : sql;
+      log.push(word);
+      if (word === failOn) throw new Error(`${word} failed`);
+    },
+    release(destroy) {
+      log.push(destroy ? "destroy" : "release");
+    },
+  };
+  return { log, connect: async () => client };
+}
+
+test("the booking lock wraps the task in one transaction", async () => {
+  const { log, connect } = fakeLockClient();
+  const result = await db.runLocked(connect, async () => { log.push("task"); return 42; });
+  assert.equal(result, 42);
+  assert.deepEqual(log, ["BEGIN", "LOCK", "task", "COMMIT", "release"]);
+});
+
+test("the booking lock is given back when the task fails", async () => {
+  const { log, connect } = fakeLockClient();
+  await assert.rejects(db.runLocked(connect, async () => { log.push("task"); throw new Error("no"); }), /no/);
+  assert.deepEqual(log, ["BEGIN", "LOCK", "task", "COMMIT", "release"]);
+});
+
+test("the task does not run when the lock cannot be taken, and the connection is thrown away", async () => {
+  const { log, connect } = fakeLockClient("LOCK");
+  await assert.rejects(db.runLocked(connect, async () => { log.push("task"); }), /LOCK failed/);
+  assert.deepEqual(log, ["BEGIN", "LOCK", "destroy"]);
+});
+
+test("a lost lock connection does not hide the task's result", async () => {
+  const { log, connect } = fakeLockClient("COMMIT");
+  assert.equal(await db.runLocked(connect, async () => "done"), "done");
+  assert.deepEqual(log, ["BEGIN", "LOCK", "COMMIT", "destroy"]);
+});
+
+test("with the embedded database, a locked task just runs", async () => {
+  await db.resetDB("pglite:memory");
+  assert.equal(await db.withDbLock(async () => "ok"), "ok");
+});
+
+test("on Vercel the server refuses to start without a Postgres database", async () => {
+  await db.closeDB();
+  process.env.VERCEL = "1";
+  try {
+    await assert.rejects(db.initDB(""), /DATABASE_URL is not set/);
+  } finally {
+    delete process.env.VERCEL;
+    await db.resetDB("pglite:memory");
+  }
+});

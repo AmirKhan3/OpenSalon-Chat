@@ -10,6 +10,7 @@ import { addMessage } from "./chatstore.js";
 import { isOptedOut, smsThreadForPhone } from "./sms.js";
 import { getSmsProvider, toE164 } from "./smsprovider.js";
 import { onBookingEvent, type BookingEvent } from "./events.js";
+import { keepAlive } from "./background.js";
 
 /**
  * Automations: routines the owner (or the assistant, when asked) sets up once.
@@ -388,6 +389,7 @@ function startTask(runId: number, row: Row, apt: Apt | null): void {
     }
   })().finally(() => { background.delete(task); });
   background.add(task);
+  keepAlive(task);
 }
 
 async function act(row: Row, apt: Apt, key: string, settings: ShopSettings): Promise<void> {

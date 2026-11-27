@@ -11,7 +11,6 @@ const { default: app } = await import("./index.js");
 const { setShopClock } = await import("./shoptime.js");
 const agent = await import("./agent.js");
 const { saveSettings } = await import("./settings.js");
-const { chatLimit } = await import("./ratelimit.js");
 
 after(async () => {
   await agent.agentIdle();
@@ -27,7 +26,6 @@ const JAMIE = "+15555550101";
 
 beforeEach(async () => {
   await agent.agentIdle();
-  chatLimit.reset();
   delete process.env.STAFF_PASSWORD;
   setShopClock(() => new Date(NOW));
   await db.resetDB("pglite:memory");
