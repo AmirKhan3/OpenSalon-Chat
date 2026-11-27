@@ -5,7 +5,7 @@ import { addDays, shopNow, weekdayOf } from "./shoptime.js";
 import { money, publicPrepayPolicy } from "./prepay.js";
 import { addMessage, assistantThread, getThread, handToBarber, messagesForAgent, type Message, type Thread } from "./chatstore.js";
 import { clientTools, DAYS, type ClientContext } from "./clienttools.js";
-import { staffTools } from "./stafftools.js";
+import { MAX_TEXTS_PER_REQUEST, MAX_TEXTS_PER_RUN, staffTools } from "./stafftools.js";
 
 /**
  * Tolly, the AI assistant.
@@ -17,6 +17,9 @@ import { staffTools } from "./stafftools.js";
  */
 
 const MAX_STEPS = 8;
+/** The barber may ask for many actions at once, for example a text to each client of a day. */
+const STAFF_MAX_STEPS = 45;
+const STAFF_TIMEOUT_MS = 5 * 60_000;
 const DEFAULT_MODEL = "claude-sonnet-5-5";
 
 // ── Model ──────────────────────────────────────────────────────────
@@ -112,7 +115,7 @@ function clientPrompt(settings: ShopSettings, thread: Thread): string {
   ].filter(Boolean).join("\n\n");
 }
 
-function staffPrompt(settings: ShopSettings): string {
+function staffPrompt(settings: ShopSettings, automationRun = false): string {
   return [
     `You are ${settings.agent_name}, the personal assistant of the barber who owns this shop. This chat is private: only staff read it.`,
     shopFacts(settings),
@@ -121,7 +124,15 @@ function staffPrompt(settings: ShopSettings): string {
       "- Use the tools for every fact. Never invent a booking, a price or a number.",
       "- Be brief. Plain text, short sentences.",
       "- If you cannot do something with your tools, say so plainly.",
-      "- Do not sign your messages.",
+      "- Do not sign your messages to the owner. Texts you send to clients are signed for you.",
+      "- Ask the owner to confirm before an action that affects many clients (more than 3), and when the request is unclear. Say exactly what you will do and to whom.",
+      "- One clear action on one booking needs no question: do it, then say what you did.",
+      "- Before you create a text routine (automation), show the owner a preview of the text and wait for their OK.",
+      "- For every question about money, use income_report. It counts money really taken. Booked prices are not income.",
+      "- Cancelling never refunds a pre-pay. Tell the owner when a cancelled booking had one.",
+      automationRun
+        ? `- You can send at most ${MAX_TEXTS_PER_RUN} texts in this run.`
+        : `- You can send at most ${MAX_TEXTS_PER_REQUEST} texts for one request. For more, suggest an automation.`,
     ].join("\n"),
     settings.agent_instructions ? `Extra instructions from the shop owner:\n${settings.agent_instructions}` : "",
   ].filter(Boolean).join("\n\n");
@@ -231,8 +242,8 @@ async function runOnce(threadId: number, baseUrl: string, state: RunState): Prom
       system: staffChat ? staffPrompt(settings) : clientPrompt(settings, thread),
       messages: toModelMessages(history, userSender, settings.agent_name),
       tools: staffChat ? staffTools() : clientTools(ctx),
-      stopWhen: stepCountIs(MAX_STEPS),
-      abortSignal: AbortSignal.timeout(90_000),
+      stopWhen: stepCountIs(staffChat ? STAFF_MAX_STEPS : MAX_STEPS),
+      abortSignal: AbortSignal.timeout(staffChat ? STAFF_TIMEOUT_MS : 90_000),
     });
     text = result.text.trim();
   } catch (err) {
@@ -303,13 +314,14 @@ export async function runStaffTask(name: string, instructions: string): Promise<
   try {
     const result = await generateText({
       model,
-      system: `${staffPrompt(settings)}\n\n${AUTOMATION_RULES}`,
+      system: `${staffPrompt(settings, true)}\n\n${AUTOMATION_RULES}`,
       messages: [{ role: "user", content: instructions }],
-      tools: staffTools(),
-      stopWhen: stepCountIs(MAX_STEPS),
-      abortSignal: AbortSignal.timeout(90_000),
+      tools: staffTools({ automationRun: true }),
+      stopWhen: stepCountIs(STAFF_MAX_STEPS + 20),
+      abortSignal: AbortSignal.timeout(STAFF_TIMEOUT_MS),
     });
-    const text = result.text.trim() || "Done. Nothing to report.";
+    const cutShort = result.steps.length >= STAFF_MAX_STEPS + 20 && result.finishReason === "tool-calls";
+    const text = result.text.trim() || (cutShort ? "The run stopped early: it took too many steps. Some of the work may not be done." : "Done. Nothing to report.");
     await addMessage(thread.id, "agent", `Automation "${name}": ${text}`);
     return { ok: true, text };
   } catch (err) {

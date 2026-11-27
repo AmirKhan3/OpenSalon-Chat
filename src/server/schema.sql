@@ -228,3 +228,24 @@ CREATE TABLE IF NOT EXISTS automation_runs (
   created_at TEXT DEFAULT utc_now()
 );
 CREATE INDEX IF NOT EXISTS idx_automation_runs_automation ON automation_runs(automation_id, id);
+
+-- Money really taken. A refund is a row with negative amounts.
+-- kind: payment | refund. method: card_online | card_in_person | cash | other.
+-- paid_on: the shop-local date. Rows stay when a booking or client is deleted: they are proof of income.
+CREATE TABLE IF NOT EXISTS payments (
+  id SERIAL PRIMARY KEY,
+  appointment_id INTEGER REFERENCES appointments(id) ON DELETE SET NULL,
+  client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+  staff_id INTEGER REFERENCES staff(id) ON DELETE SET NULL,
+  kind TEXT NOT NULL DEFAULT 'payment',
+  method TEXT NOT NULL DEFAULT 'other',
+  amount DOUBLE PRECISION NOT NULL DEFAULT 0,
+  tip DOUBLE PRECISION NOT NULL DEFAULT 0,
+  note TEXT NOT NULL DEFAULT '',
+  paid_on TEXT NOT NULL,
+  stripe_ref TEXT,
+  created_at TEXT DEFAULT utc_now(),
+  UNIQUE (stripe_ref, kind)
+);
+CREATE INDEX IF NOT EXISTS idx_payments_paid_on ON payments(paid_on);
+CREATE INDEX IF NOT EXISTS idx_payments_appointment ON payments(appointment_id);
