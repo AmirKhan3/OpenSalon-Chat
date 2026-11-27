@@ -39,6 +39,18 @@ DATABASE_URL=postgres://user:password@localhost:5432/tolly pnpm start
 
 Tolly creates its tables on start. It is safe to start it again and again.
 
+## Staff login
+
+Set `STAFF_PASSWORD` to protect the dashboard. Staff share this one password.
+Set `SESSION_SECRET` too, so logins survive a restart.
+
+- With `NODE_ENV=production`, the server does not start without `STAFF_PASSWORD`.
+- In development, an empty `STAFF_PASSWORD` turns login off.
+- After 5 wrong passwords, that address must wait 5 minutes.
+- Behind a reverse proxy, set `TRUST_PROXY=1`. Then make sure the server port can be reached only through the proxy.
+- Always set `NODE_ENV=production` on a real server.
+- Logging out clears the cookie in that browser. To end every login at once, change `STAFF_PASSWORD` or `SESSION_SECRET`.
+
 ## Settings
 
 Copy `.env.example` to `.env` and fill in what you need. Never put secrets in the code.

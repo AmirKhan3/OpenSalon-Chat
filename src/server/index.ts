@@ -3,6 +3,7 @@ import { query, get, run } from "./db.js";
 import { findConflicts, describeConflicts, toMinutes, type Busy } from "./scheduling.js";
 import { ensureSeeded } from "./seed.js";
 import { oneAtATime } from "./lock.js";
+import { registerAuthRoutes, requireStaff } from "./auth.js";
 
 const app = new OpenAPIHono({
   // A request that fails validation gets 400 { error }.
@@ -25,6 +26,10 @@ app.onError((err, c) => {
 });
 
 app.notFound((c) => c.json({ error: "Not found" }, 404));
+
+// Staff login. Everything under /api needs it, except the open paths in auth.ts.
+app.use("/api/*", requireStaff);
+registerAuthRoutes(app);
 
 app.doc("/api/openapi.json", {
   openapi: "3.0.0",

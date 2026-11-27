@@ -6,6 +6,9 @@ export class ApiError extends Error {
   }
 }
 
+/** Fired on window when any API call answers 401. */
+export const UNAUTHORIZED_EVENT = "tolly:unauthorized";
+
 export async function api<T>(method: string, path: string, body?: unknown): Promise<T> {
   const opts: RequestInit = { method, headers: {} };
   if (body) {
@@ -13,6 +16,10 @@ export async function api<T>(method: string, path: string, body?: unknown): Prom
     opts.body = JSON.stringify(body);
   }
   const r = await fetch(path, opts);
+  // The session ended (or never started). Tell the app to show the login screen.
+  if (r.status === 401 && !path.startsWith("/api/auth/")) {
+    window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+  }
   const text = await r.text();
   let data: unknown;
   try {

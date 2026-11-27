@@ -1,7 +1,6 @@
 import { useEffect, useState } from "preact/hooks";
-import type { ComponentChildren } from "preact";
 import { useApp } from "../context";
-import { Scissors, Menu, LayoutDashboard, CalendarDays, Clock, Users, UserCog, Sparkles, Package } from "lucide-preact";
+import { Scissors, Menu, LayoutDashboard, CalendarDays, Clock, Users, UserCog, Sparkles, Package, LogOut } from "lucide-preact";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +18,7 @@ const navItems: { view: View; path: string; label: string; icon: typeof LayoutDa
   { view: "products", path: "/products", label: "Products", icon: Package },
 ];
 
-function SidebarContent({ currentView, onNavigate, card }: { currentView: View; onNavigate?: () => void; card?: ComponentChildren }) {
+function SidebarContent({ currentView, onNavigate, onLogout }: { currentView: View; onNavigate?: () => void; onLogout?: () => void }) {
   const { navigate, stats } = useApp();
 
   return (
@@ -59,7 +58,17 @@ function SidebarContent({ currentView, onNavigate, card }: { currentView: View; 
           </button>
         ))}
       </nav>
-      {card && <div className="px-2 pb-2">{card}</div>}
+      {onLogout && (
+        <div className="px-2 pb-2">
+          <button
+            className="flex min-h-11 w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-0"
+            onClick={onLogout}
+          >
+            <LogOut className="h-4 w-4" />
+            Log out
+          </button>
+        </div>
+      )}
       <Separator />
       <div className="flex items-center justify-around px-4 py-4">
         <div className="text-center">
@@ -75,7 +84,7 @@ function SidebarContent({ currentView, onNavigate, card }: { currentView: View; 
   );
 }
 
-export function Sidebar({ currentView }: { currentView: View }) {
+export function Sidebar({ currentView, onLogout }: { currentView: View; onLogout?: () => void }) {
   const [open, setOpen] = useState(false);
   const { navigate, stats } = useApp();
 
@@ -94,7 +103,7 @@ export function Sidebar({ currentView }: { currentView: View }) {
   return (
     <>
       <aside className="hidden w-60 shrink-0 border-r md:block">
-        <SidebarContent currentView={currentView} />
+        <SidebarContent currentView={currentView} onLogout={onLogout} />
       </aside>
       <header className="flex shrink-0 items-center justify-between gap-3 border-b bg-sidebar px-4 py-2 md:hidden">
         <span className="flex items-center gap-2 text-sm font-semibold">
@@ -110,7 +119,7 @@ export function Sidebar({ currentView }: { currentView: View }) {
           </DialogTrigger>
           <DialogContent aria-describedby={undefined} className="left-0 top-0 flex h-dvh w-80 max-w-[calc(100%-2rem)] translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0 sm:rounded-none [&>button]:flex [&>button]:h-11 [&>button]:w-11 [&>button]:items-center [&>button]:justify-center [&>button]:right-2 [&>button]:top-3">
             <DialogTitle className="sr-only">Navigation menu</DialogTitle>
-            <SidebarContent currentView={currentView} onNavigate={() => setOpen(false)} />
+            <SidebarContent currentView={currentView} onNavigate={() => setOpen(false)} onLogout={onLogout} />
           </DialogContent>
         </Dialog>
       </header>

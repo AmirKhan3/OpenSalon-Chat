@@ -6,6 +6,7 @@ import { Hono } from "hono";
 import app from "./index.js";
 import { closeDB, initDB } from "./db.js";
 import { ensureSeeded } from "./seed.js";
+import { checkAuthConfig } from "./auth.js";
 
 /**
  * The Node server: the API plus the built web app from dist/.
@@ -31,7 +32,8 @@ const NOT_BUILT =
 export function createServerApp(): Hono {
   const root = new Hono();
 
-  root.all("/api/*", (c) => app.fetch(c.req.raw));
+  // Pass the Node bindings along, so the API can read the caller's address.
+  root.all("/api/*", (c) => app.fetch(c.req.raw, c.env as object));
 
   // serveStatic wants a root relative to the working directory.
   const files = serveStatic({ root: "./dist" });
@@ -58,6 +60,8 @@ export function createServerApp(): Hono {
 
 async function main(): Promise<void> {
   const port = Number(process.env.PORT) || 8787;
+  // Throws in production when STAFF_PASSWORD is missing.
+  for (const warning of checkAuthConfig()) console.warn(`Warning: ${warning}`);
   await initDB();
   await ensureSeeded();
   const server = serve({ fetch: createServerApp().fetch, port }, (info) => {
