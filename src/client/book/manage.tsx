@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
-import { Clock, MapPin } from "lucide-preact";
+import { CalendarPlus, Clock, MapPin } from "lucide-preact";
 import { request, type BookingData } from "./api";
 import { Notice, Page, PrimaryButton } from "./app";
 import { formatPrice, formatTime, longDate } from "./dates";
@@ -35,6 +35,8 @@ export function ManagePage({ token }: { token: string }) {
   // Stripe sends the client back here with ?paid=1. The payment can take a moment to arrive.
   const justPaid = useMemo(() => new URLSearchParams(window.location.search).get("paid") === "1", []);
   const [checks, setChecks] = useState(0);
+  // The link in a text ends with ?calendar=1. It points the client at the calendar buttons.
+  const fromCalendarLink = useMemo(() => new URLSearchParams(window.location.search).get("calendar") === "1", []);
 
   useEffect(() => {
     request<BookingData>("GET", path)
@@ -111,6 +113,25 @@ export function ManagePage({ token }: { token: string }) {
           <p className="mt-3 flex justify-between text-dim"><span>Booking</span><span>{booking.reference}</span></p>
           {shop.address && <p className="mt-2 flex items-start gap-1.5 text-dim"><MapPin className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />{shop.address}</p>}
         </div>
+
+        {["booked", "confirmed", "pending"].includes(booking.status) && (
+          <div
+            id="calendar"
+            className={`rounded-xl border p-4 ${fromCalendarLink ? "border-brass bg-brass/10" : "border-line bg-panel"}`}
+          >
+            <p className="flex items-center gap-1.5 text-sm font-medium text-cream">
+              <CalendarPlus className="h-4 w-4" aria-hidden="true" />Add to your calendar
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <a href={`${path}/calendar.ics`} className="flex min-h-12 items-center justify-center rounded-xl border border-line text-sm font-medium text-cream hover:border-brass">
+                iPhone / Apple
+              </a>
+              <a href={`${path}/google-calendar`} target="_blank" rel="noopener noreferrer" className="flex min-h-12 items-center justify-center rounded-xl border border-line text-sm font-medium text-cream hover:border-brass">
+                Google
+              </a>
+            </div>
+          </div>
+        )}
 
         {waitingForPayment && <p role="status" className="text-sm text-dim">Checking your payment...</p>}
         {!waitingForPayment && justPaid && booking.status === "pending" && (

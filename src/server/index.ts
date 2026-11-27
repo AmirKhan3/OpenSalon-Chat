@@ -9,6 +9,7 @@ import { registerSettingsRoutes } from "./settings.js";
 import { registerChatRoutes } from "./chat.js";
 import { registerSmsRoutes } from "./sms.js";
 import { registerAutomationRoutes } from "./automations.js";
+import { registerCalendarRoutes } from "./calendar.js";
 import { emitBookingEvent } from "./events.js";
 import { utcStamp } from "./shoptime.js";
 import { registerPublicRoutes } from "./public.js";
@@ -1196,5 +1197,6 @@ registerStripeRoutes(app);
 registerChatRoutes(app);
 registerSmsRoutes(app);
 registerAutomationRoutes(app);
+registerCalendarRoutes(app);
 
 export default app;

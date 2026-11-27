@@ -288,6 +288,8 @@ export function SettingsPage() {
         </CardContent>
       </Card>
 
+      <CalendarLinks />
+
       {sms && <Connections sms={sms} stripeConnected={stripeConnected} />}
 
       <div className="flex items-center gap-3">
@@ -346,6 +348,85 @@ function Connections({ sms, stripeConnected }: { sms: SmsInfo; stripeConnected: 
             {stripeConnected ? "Connected." : "Not connected. Set STRIPE_SECRET_KEY on the server to take pre-pay."}
           </p>
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+interface CalendarLink { staff_id: number; name: string; feed_url: string; webcal_url: string }
+
+/** Each barber's bookings as a calendar feed, for the phone's own calendar app. */
+function CalendarLinks() {
+  const [links, setLinks] = useState<CalendarLink[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState<number | null>(null);
+  const [asking, setAsking] = useState<number | null>(null);
+  const [shown, setShown] = useState<number | null>(null);
+
+  useEffect(() => {
+    api<{ links: CalendarLink[] }>("GET", "/api/calendar-links")
+      .then((d) => setLinks(d.links))
+      .catch((e: Error) => setError(e.message));
+  }, []);
+
+  const copy = async (link: CalendarLink) => {
+    try {
+      await navigator.clipboard.writeText(link.feed_url);
+      setCopied(link.staff_id);
+      window.setTimeout(() => setCopied(null), 2000);
+    } catch {
+      // No clipboard: show the link, so the barber can select it.
+      setShown(link.staff_id);
+    }
+  };
+
+  const renew = async (link: CalendarLink) => {
+    setError(null);
+    try {
+      const made = await api<{ link: CalendarLink }>("POST", `/api/calendar-links/${link.staff_id}/reset`);
+      setLinks((all) => (all ?? []).map((l) => (l.staff_id === link.staff_id ? made.link : l)));
+      setAsking(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong. Please try again.");
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-base">Calendar on your phone</CardTitle></CardHeader>
+      <CardContent className="space-y-4 text-sm">
+        <p className="text-muted-foreground">
+          See your bookings in your own calendar app. The calendar updates by itself. This can take a few hours.
+          Anyone with a link can see that barber's bookings, so keep it private.
+        </p>
+        {error && <p role="alert" className="text-destructive">{error}</p>}
+        {!links && !error && <p className="text-muted-foreground">Loading...</p>}
+        {links && links.length === 0 && <p className="text-muted-foreground">Add a barber first.</p>}
+        {links?.map((link) => (
+          <div key={link.staff_id} className="space-y-2 border-t pt-4 first:border-t-0 first:pt-0">
+            <p className="font-medium">{link.name}</p>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" onClick={() => { window.location.href = link.webcal_url; }}>Add to iPhone / Mac Calendar</Button>
+              <Button type="button" variant="outline" onClick={() => copy(link)}>{copied === link.staff_id ? "Copied" : "Copy link for Google"}</Button>
+              {asking !== link.staff_id && <Button type="button" variant="ghost" onClick={() => setAsking(link.staff_id)}>New link</Button>}
+            </div>
+            {shown === link.staff_id && (
+              <Input readOnly aria-label={`Calendar link for ${link.name}`} value={link.feed_url} onFocus={(e: FocusEvent) => (e.currentTarget as HTMLInputElement).select()} />
+            )}
+            {asking === link.staff_id && (
+              <div className="space-y-2 rounded-md border border-destructive/40 p-3">
+                <p>Make a new link for {link.name}? The old link stops working. Calendars that use it will stop updating.</p>
+                <div className="flex gap-2">
+                  <Button type="button" variant="destructive" onClick={() => renew(link)}>Yes, make a new link</Button>
+                  <Button type="button" variant="outline" onClick={() => setAsking(null)}>Keep the old link</Button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+        <p className="text-xs text-muted-foreground">
+          Google Calendar: copy the link. On a computer, open Google Calendar, then Other calendars, then From URL, and paste it.
+        </p>
       </CardContent>
     </Card>
   );

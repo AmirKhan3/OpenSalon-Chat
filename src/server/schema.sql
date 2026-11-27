@@ -249,3 +249,7 @@ CREATE TABLE IF NOT EXISTS payments (
 );
 CREATE INDEX IF NOT EXISTS idx_payments_paid_on ON payments(paid_on);
 CREATE INDEX IF NOT EXISTS idx_payments_appointment ON payments(appointment_id);
+
+-- calendar_token: the secret in a barber's calendar feed link.
+ALTER TABLE staff ADD COLUMN IF NOT EXISTS calendar_token TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_staff_calendar_token ON staff(calendar_token);
