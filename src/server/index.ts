@@ -37,7 +37,9 @@ app.onError((err, c) => {
   const code = (err as { code?: string }).code;
   if (code === "23503") return c.json({ error: "That client, barber, or service does not exist." }, 400);
   if (code === "22003") return c.json({ error: "A number is too large." }, 400);
-  console.error("[api]", c.req.method, c.req.path, err instanceof Error ? err.message : err);
+  // The path can hold a secret token (a manage link, a chat, a calendar feed). Do not log it.
+  const path = c.req.path.replace(/[A-Za-z0-9_-]{20,}/g, "***");
+  console.error("[api]", c.req.method, path, err instanceof Error ? err.message : err);
   return c.json({ error: "Something went wrong. Please try again." }, 500);
 });
 

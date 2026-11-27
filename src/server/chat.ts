@@ -3,6 +3,8 @@ import { query } from "./db.js";
 import { getSettings } from "./settings.js";
 import { publicBaseUrl } from "./public.js";
 import { agentConfigured, isAgentRunning, kickAgent } from "./agent.js";
+import { clientIp } from "./auth.js";
+import { chatLimit } from "./ratelimit.js";
 import {
   addMessage, allMessages, assistantThread, createWebThread, getThread, markRead, MAX_MESSAGE, messagesForAgent,
   messagesForClient, setMode, threadByToken, type Message, type Thread,
@@ -51,7 +53,10 @@ const publicSendRoute = createRoute({
   method: "post", path: "/api/public/chat/messages", tags: ["Public chat"],
   summary: "Send a message in the web chat. Without a token, a new chat starts.",
   request: { body: json(z.object({ token: z.string().max(64).optional(), message: Body })) },
-  responses: { 200: { description: "The chat", ...json(PublicThreadSchema) }, 400: errors[400] },
+  responses: {
+    200: { description: "The chat", ...json(PublicThreadSchema) }, 400: errors[400],
+    429: { description: "Too many messages", ...json(ErrorSchema) },
+  },
 });
 
 const publicReadRoute = createRoute({
@@ -167,6 +172,9 @@ export function registerChatRoutes(app: OpenAPIHono): void {
   // ── Public ──
   app.openapi(publicSendRoute, async (c) => {
     const { token, message } = c.req.valid("json");
+    if (chatLimit.hit(clientIp(c)) > 0) {
+      return c.json({ error: "You are sending messages too fast. Wait a minute, then try again." }, 429);
+    }
     // An unknown token starts a new chat. It never opens someone else's.
     const thread = (token ? await threadByToken(token) : null) ?? (await createWebThread());
     await addMessage(thread.id, "client", message);
