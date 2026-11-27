@@ -2,6 +2,7 @@ import { createRoute, z, type OpenAPIHono } from "@hono/zod-openapi";
 import { query } from "./db.js";
 import { isValidTimeZone, TIME } from "./shoptime.js";
 import { stripeConnected } from "./stripe.js";
+import { smsStatus } from "./smsprovider.js";
 
 /**
  * Shop settings. They live in the `settings` table (one JSON value per key)
@@ -103,7 +104,18 @@ export async function saveSettings(patch: Partial<ShopSettings>): Promise<ShopSe
 const ErrorSchema = z.object({ error: z.string() });
 
 /** stripe_connected: false means pre-pay is off, whatever the mode says. */
-const SettingsResponse = z.object({ settings: SettingsSchema, stripe_connected: z.boolean() });
+const SettingsResponse = z.object({
+  settings: SettingsSchema,
+  stripe_connected: z.boolean(),
+  /** Texts. The keys live in the environment; this only says what is set up. */
+  sms: z.object({ provider: z.string(), connected: z.boolean(), from_number: z.string(), webhook_url: z.string() }),
+});
+
+function smsInfo(requestUrl: string) {
+  const { webhook_path, ...status } = smsStatus();
+  const base = (process.env.PUBLIC_URL ?? "").trim().replace(/\/+$/, "") || new URL(requestUrl).origin;
+  return { ...status, webhook_url: `${base}${webhook_path}` };
+}
 
 const getRoute = createRoute({
   method: "get", path: "/api/settings", tags: ["Settings"], summary: "Shop settings",
@@ -120,6 +132,6 @@ const putRoute = createRoute({
 });
 
 export function registerSettingsRoutes(app: OpenAPIHono): void {
-  app.openapi(getRoute, async (c) => c.json({ settings: await getSettings(), stripe_connected: stripeConnected() }, 200));
-  app.openapi(putRoute, async (c) => c.json({ settings: await saveSettings(c.req.valid("json")), stripe_connected: stripeConnected() }, 200));
+  app.openapi(getRoute, async (c) => c.json({ settings: await getSettings(), stripe_connected: stripeConnected(), sms: smsInfo(c.req.url) }, 200));
+  app.openapi(putRoute, async (c) => c.json({ settings: await saveSettings(c.req.valid("json")), stripe_connected: stripeConnected(), sms: smsInfo(c.req.url) }, 200));
 }

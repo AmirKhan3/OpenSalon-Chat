@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { ComponentChildren } from "preact";
-import { Check, ChevronLeft, Clock, MapPin, Scissors, User } from "lucide-preact";
+import { Check, ChevronLeft, Clock, MapPin, MessageSquareText, Scissors, User } from "lucide-preact";
 import { request, RequestError, type Availability, type Barber, type BookingData, type Service, type ShopData, type Slot } from "./api";
 import {
   bookableDates, dayNumber, formatDuration, formatPrice, formatTime, isPhone, longDate, shortMonth, shortWeekday, weekdayOf,
@@ -23,7 +23,13 @@ export function BookApp() {
   return manage ? <ManagePage token={decodeURIComponent(manage[1])} /> : <BookingFlow />;
 }
 
-export function Page({ shopName, children }: { shopName?: string; children: ComponentChildren }) {
+/** "+15555550123" as "(555) 555-0123". Other numbers stay as they are. */
+function prettyPhone(number: string): string {
+  const us = /^\+1(\d{3})(\d{3})(\d{4})$/.exec(number);
+  return us ? `(${us[1]}) ${us[2]}-${us[3]}` : number;
+}
+
+export function Page({ shopName, smsNumber, children }: { shopName?: string; smsNumber?: string; children: ComponentChildren }) {
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] pt-[calc(env(safe-area-inset-top)+1.25rem)]">
       <header className="mb-6 flex items-center gap-3">
@@ -36,6 +42,15 @@ export function Page({ shopName, children }: { shopName?: string; children: Comp
         </div>
         <ChatButton />
       </header>
+      {smsNumber && (
+        <a
+          href={`sms:${smsNumber}`}
+          className="mb-6 flex min-h-12 items-center justify-center gap-2 rounded-xl border border-line bg-panel px-4 text-sm font-medium text-cream hover:border-brass/60"
+        >
+          <MessageSquareText className="h-4 w-4 text-brass" aria-hidden="true" />
+          Text us to book: {prettyPhone(smsNumber)}
+        </a>
+      )}
       {children}
     </div>
   );
@@ -114,7 +129,7 @@ function BookingFlow() {
   const barber = data.barbers.find((b) => b.id === barberId) ?? null;
 
   return (
-    <Page shopName={data.shop.name}>
+    <Page shopName={data.shop.name} smsNumber={data.shop.sms_number}>
       <div className="mb-5">
         <div className="mb-3 flex gap-1.5" aria-hidden="true">
           {STEPS.map((s, i) => <div key={s} className={`h-1 flex-1 rounded-full ${i <= index ? "bg-brass" : "bg-line"}`} />)}
@@ -447,6 +462,7 @@ function DetailsStep(props: {
       <label className="block">
         <span className="mb-1.5 block text-sm text-dim">Mobile number</span>
         <input className={field} value={phone} onInput={(e) => setPhone(e.currentTarget.value)} type="tel" inputMode="tel" autoComplete="tel" maxLength={30} placeholder="(555) 555-0123" required />
+        <span className="mt-1.5 block text-xs text-dim">We'll text you about this booking. Reply STOP to opt out.</span>
       </label>
       <label className="block">
         <span className="mb-1.5 block text-sm text-dim">Email (optional)</span>

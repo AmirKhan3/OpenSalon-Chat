@@ -184,3 +184,10 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_chat_messages_thread ON chat_messages(thread_id, id);
 CREATE INDEX IF NOT EXISTS idx_chat_threads_phone ON chat_threads(phone);
+
+-- Texts (SMS).
+-- opted_out: the client texted STOP. We send this number no more texts until they text START.
+-- provider_ref: the provider's id of a text. It stops a webhook that arrives twice from being saved twice.
+ALTER TABLE chat_threads ADD COLUMN IF NOT EXISTS opted_out INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS provider_ref TEXT;
+CREATE INDEX IF NOT EXISTS idx_chat_messages_ref ON chat_messages(provider_ref);

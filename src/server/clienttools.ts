@@ -8,9 +8,9 @@ import { isValidDate, shopNow, TIME, weekdayOf } from "./shoptime.js";
 import { money } from "./prepay.js";
 import {
   activeBarbers, activeServices, bookingForPhone, cancelBooking, clientByPhone, createBooking, ensureToken,
-  isPhone, moveBooking, pickServices, servicesOf, upcomingBookingsForPhone, type BookingSource,
+  isPhone, moveBooking, phoneIsShared, pickServices, servicesOf, upcomingBookingsForPhone, type BookingSource,
 } from "./clientbooking.js";
-import { linkClient, setMode, addMessage } from "./chatstore.js";
+import { addMessage, getThread, linkClient, setMode } from "./chatstore.js";
 
 /**
  * The tools Tolly has when it talks with a client.
@@ -32,6 +32,8 @@ export interface ClientContext {
   baseUrl: string;
   /** Set when Tolly gave the chat to a barber in this run. */
   handed: boolean;
+  /** What changed in this run, in words for the client. Sent if the run fails before Tolly can say it. */
+  receipts: string[];
 }
 
 export const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -39,6 +41,17 @@ export const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Fr
 const NOT_VERIFIED =
   "Not possible in this chat: we cannot check who is writing here. " +
   "Tell the client to text the shop from their phone, or to open the manage link they got when they booked.";
+
+const SHARED_PHONE =
+  "Not possible here: more than one client uses this phone number, so we cannot tell whose bookings these are. " +
+  "Share no booking details. Use hand_to_barber.";
+
+const TAKEN_OVER = "Stop: a barber has this chat now. Change nothing. Do not answer.";
+
+/** True when a barber took the chat during this run. Tolly must not change bookings any more. */
+async function barberHasIt(ctx: ClientContext): Promise<boolean> {
+  return (await getThread(ctx.threadId))?.mode !== "agent";
+}
 
 const DateField = z.string().describe("The date, as YYYY-MM-DD");
 const TimeField = z.string().describe("The start time, 24-hour, as HH:MM");
@@ -108,6 +121,7 @@ export function clientTools(ctx: ClientContext) {
         if (!name && ctx.verifiedPhone) name = (await clientByPhone(phone))?.name ?? "";
         if (!name) return { error: "Ask the client for their name." };
         if (!isValidDate(input.date) || !TIME.test(input.time)) return { error: "Use a date as YYYY-MM-DD and a time as HH:MM." };
+        if (await barberHasIt(ctx)) return { error: TAKEN_OVER };
 
         const made = await oneAtATime(() => createBooking({
           name, phone, date: input.date, time: input.time, service_ids: input.service_ids,
@@ -117,6 +131,10 @@ export function clientTools(ctx: ClientContext) {
 
         const saved = await get<{ name: string }>("SELECT name FROM clients WHERE id = ?", [made.clientId]);
         await linkClient(ctx.threadId, made.clientId, saved?.name ?? name);
+        ctx.receipts.push(
+          `Your visit is ${made.checkoutUrl ? "held" : "booked"}: ${DAYS[weekdayOf(input.date)]} ${input.date} at ${input.time} (${made.reference}). ` +
+          (made.checkoutUrl ? `Pay here to keep it: ${made.checkoutUrl} ` : "") + `Manage it here: ${manageLink(ctx.baseUrl, made.token)}`,
+        );
         return {
           booked: true, reference: made.reference, date: input.date, day: DAYS[weekdayOf(input.date)], time: input.time,
           manage_link: manageLink(ctx.baseUrl, made.token),
@@ -132,6 +150,7 @@ export function clientTools(ctx: ClientContext) {
       inputSchema: z.object({}),
       execute: async () => {
         if (!ctx.verifiedPhone) return { error: NOT_VERIFIED };
+        if (await phoneIsShared(ctx.verifiedPhone)) return { error: SHARED_PHONE };
         const rows = await upcomingBookingsForPhone(ctx.verifiedPhone);
         const bookings = [];
         for (const row of rows) {
@@ -153,10 +172,13 @@ export function clientTools(ctx: ClientContext) {
         if (!ctx.verifiedPhone) return { error: NOT_VERIFIED };
         if (!isValidDate(input.date) || !TIME.test(input.time)) return { error: "Use a date as YYYY-MM-DD and a time as HH:MM." };
         const phone = ctx.verifiedPhone;
+        if (await phoneIsShared(phone)) return { error: SHARED_PHONE };
+        if (await barberHasIt(ctx)) return { error: TAKEN_OVER };
         return oneAtATime(async () => {
           const row = await bookingForPhone(phone, input.reference);
           if (!row) return { error: "This person has no coming booking with that reference." };
           const done = await moveBooking(row, input.date, input.time, "by text");
+          if (done.ok) ctx.receipts.push(`Your visit ${row.identifier} moved to ${DAYS[weekdayOf(input.date)]} ${input.date} at ${input.time}.`);
           return done.ok ? { moved: true, reference: row.identifier, date: input.date, time: input.time } : { error: done.error };
         });
       },
@@ -168,10 +190,13 @@ export function clientTools(ctx: ClientContext) {
       execute: async (input) => {
         if (!ctx.verifiedPhone) return { error: NOT_VERIFIED };
         const phone = ctx.verifiedPhone;
+        if (await phoneIsShared(phone)) return { error: SHARED_PHONE };
+        if (await barberHasIt(ctx)) return { error: TAKEN_OVER };
         return oneAtATime(async () => {
           const row = await bookingForPhone(phone, input.reference);
           if (!row) return { error: "This person has no coming booking with that reference." };
           const done = await cancelBooking(row, "by text");
+          if (done.ok) ctx.receipts.push(`Your visit ${row.identifier} is cancelled.`);
           return done.ok ? { cancelled: true, reference: row.identifier } : { error: done.error };
         });
       },

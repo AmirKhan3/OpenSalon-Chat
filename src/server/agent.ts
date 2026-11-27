@@ -142,6 +142,8 @@ function toModelMessages(history: Message[], userSender: "client" | "staff", age
     if (last && last.role === role) last.content += `\n${text}`;
     else if (out.length > 0 || role === "user") out.push({ role, content: text });
   }
+  // The model answers the user: nothing may follow the user's last words.
+  while (out.length > 0 && out[out.length - 1].role === "assistant") out.pop();
   return out;
 }
 
@@ -198,7 +200,9 @@ async function runOnce(threadId: number, baseUrl: string, state: RunState): Prom
   const seen = state.seen;
   state.seen = last?.id;
   if (seen === undefined) {
-    if (!last || last.sender !== userSender) return;
+    // Notices like "A barber will reply soon." do not count as an answer.
+    const spoken = history.filter((m) => m.sender !== "system").pop();
+    if (!spoken || spoken.sender !== userSender) return;
   } else {
     // A second run: answer what arrived while the first run was thinking.
     // Put those messages after the first answer, so the model sees them as new.
@@ -217,6 +221,7 @@ async function runOnce(threadId: number, baseUrl: string, state: RunState): Prom
     source: thread.channel === "sms" ? "sms" : "chat",
     baseUrl,
     handed: false,
+    receipts: [],
   };
 
   let text = "";
@@ -232,6 +237,7 @@ async function runOnce(threadId: number, baseUrl: string, state: RunState): Prom
     text = result.text.trim();
   } catch (err) {
     console.error(`Assistant model call failed: ${err instanceof Error ? err.message : "unknown error"}`);
+    await sendReceipts(threadId, ctx, settings);
     if (ctx.handed) return void (await addMessage(threadId, "system", "A barber will reply soon."));
     return giveUp(thread, "The assistant had an error and could not answer.");
   }
@@ -245,13 +251,26 @@ async function runOnce(threadId: number, baseUrl: string, state: RunState): Prom
   if (!fresh) return;
   if (ctx.handed) {
     if (text) await addMessage(threadId, "agent", sign(text, settings));
-    else await addMessage(threadId, "system", "A barber will reply soon.");
+    else {
+      await sendReceipts(threadId, ctx, settings);
+      await addMessage(threadId, "system", "A barber will reply soon.");
+    }
     return;
   }
-  // A barber took over while Tolly was thinking: drop the reply.
-  if (fresh.mode !== "agent") return;
-  if (!text) return giveUp(thread, "The assistant gave no answer.");
+  // A barber took over while Tolly was thinking: drop the reply. The client still hears what changed.
+  if (fresh.mode !== "agent") return sendReceipts(threadId, ctx, settings);
+  if (!text) {
+    await sendReceipts(threadId, ctx, settings);
+    return giveUp(thread, "The assistant gave no answer.");
+  }
   await addMessage(threadId, "agent", sign(text, settings));
+}
+
+/** The run changed a booking but Tolly could not say so: tell the client the facts. */
+async function sendReceipts(threadId: number, ctx: ClientContext, settings: ShopSettings): Promise<void> {
+  if (ctx.receipts.length === 0) return;
+  await addMessage(threadId, "agent", sign(ctx.receipts.join("\n"), settings));
+  ctx.receipts = [];
 }
 
 /** Tolly cannot answer. A client goes to a barber. The barber's own chat gets a plain notice. */

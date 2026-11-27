@@ -3,6 +3,7 @@ import { getSettings } from "./settings.js";
 import { openSlots } from "./availability.js";
 import { isValidDate, shopNow, TIME } from "./shoptime.js";
 import { oneAtATime } from "./lock.js";
+import { getSmsProvider } from "./smsprovider.js";
 import { prepayFor, publicPrepayPolicy, refundOnCancel, releaseExpiredHolds } from "./prepay.js";
 import {
   activeBarbers, activeServices, bookingByToken, canCancel, cancelBooking, createBooking, isPhone, pickServices,
@@ -117,6 +118,8 @@ const shopRoute = createRoute({
         name: z.string(), address: z.string(), timezone: z.string(),
         hours: z.array(z.object({ closed: z.boolean(), open: z.string(), close: z.string() })),
         booking_window_days: z.number(),
+        /** The number clients text to book. Empty when texts are not set up. */
+        sms_number: z.string(),
       }),
       today: z.string(),
       services: z.array(z.object({
@@ -204,6 +207,7 @@ export function registerPublicRoutes(app: OpenAPIHono): void {
       shop: {
         name: settings.shop_name, address: settings.address, timezone: settings.timezone,
         hours: settings.hours, booking_window_days: settings.booking_window_days,
+        sms_number: getSmsProvider()?.from ?? "",
       },
       today: shopNow(settings.timezone).date,
       services,

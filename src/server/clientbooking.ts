@@ -136,6 +136,19 @@ export function canCancel(row: { status: string; scheduled_date: string; start_t
 }
 
 /**
+ * True when client records with different names share this phone number (a family, for example).
+ * PRIVACY: a text from that number could be any of them, so the assistant shows no bookings. A barber helps.
+ */
+export async function phoneIsShared(phone: string): Promise<boolean> {
+  const last10 = phoneDigits(phone).slice(-10);
+  if (last10.length < 10) return false;
+  const row = await get<{ names: number }>(
+    `SELECT COUNT(DISTINCT LOWER(TRIM(name))) AS names FROM clients WHERE ${last10Of("phone")} = ?`, [last10],
+  );
+  return Number(row?.names ?? 0) > 1;
+}
+
+/**
  * The coming bookings of the client with this phone number.
  * PRIVACY: call it only with a number we know belongs to the person asking
  * (the number a text came from). Never with a number someone typed.

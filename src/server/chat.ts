@@ -238,8 +238,9 @@ export function registerChatRoutes(app: OpenAPIHono): void {
     if (row.mode !== "agent") await addMessage(id, "note", "Handed back to the assistant.");
     await setMode(id, "agent", false);
     // If the client is waiting for an answer, the assistant picks it up now.
-    const last = (await messagesForAgent(id, 1))[0];
-    if (last?.sender === "client") kickAgent(id, publicBaseUrl(c.req.url));
+    // Notices like "A barber will reply soon." do not count as an answer.
+    const last = (await messagesForAgent(id)).filter((m) => m.sender !== "system").pop();
+    if (last?.sender === "client" && row.opted_out !== 1) kickAgent(id, publicBaseUrl(c.req.url));
     return c.json((await detail(id))!, 200);
   });
 

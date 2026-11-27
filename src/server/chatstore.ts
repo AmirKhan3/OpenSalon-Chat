@@ -1,5 +1,6 @@
 import { get, query, run } from "./db.js";
 import { newToken } from "./clientbooking.js";
+import { getSmsProvider, maskPhone } from "./smsprovider.js";
 
 /**
  * Chat threads and messages in the database.
@@ -17,11 +18,13 @@ export type Sender = "client" | "agent" | "staff" | "system" | "note";
 export interface Thread {
   id: number; kind: ThreadKind; channel: Channel; token: string | null; phone: string | null;
   client_id: number | null; display_name: string; mode: Mode; needs_attention: number; staff_unread: number;
+  /** 1 when the client texted STOP. */
+  opted_out: number;
   last_message_at: string | null; created_at: string; updated_at: string;
 }
 
 export interface Message {
-  id: number; thread_id: number; sender: Sender; body: string; delivery_status: string; created_at: string;
+  id: number; thread_id: number; sender: Sender; body: string; delivery_status: string; provider_ref: string | null; created_at: string;
 }
 
 /** The longest message we save. */
@@ -55,17 +58,51 @@ export async function assistantThread(): Promise<Thread> {
 /**
  * Save a message. Every message goes through here.
  * A message from the client counts as unread for staff.
+ *
+ * In a text (SMS) thread, a message to the client is also sent as a text, and
+ * the result is saved on it: "sent" or "failed: <reason>". Notes are never sent.
+ * `providerRef` is the provider's id of a text we received.
  */
-export async function addMessage(threadId: number, sender: Sender, body: string): Promise<Message> {
+export async function addMessage(threadId: number, sender: Sender, body: string, providerRef: string | null = null): Promise<Message> {
   const text = body.slice(0, MAX_MESSAGE);
   const rows = await query<Message>(
-    "INSERT INTO chat_messages (thread_id, sender, body) VALUES (?, ?, ?) RETURNING *", [threadId, sender, text],
+    "INSERT INTO chat_messages (thread_id, sender, body, provider_ref) VALUES (?, ?, ?, ?) RETURNING *", [threadId, sender, text, providerRef],
   );
   await run(
     `UPDATE chat_threads SET last_message_at = utc_now(), updated_at = utc_now()${sender === "client" ? ", staff_unread = staff_unread + 1" : ""} WHERE id = ?`,
     [threadId],
   );
-  return rows[0];
+  const message = rows[0];
+  if (sender === "agent" || sender === "staff" || sender === "system") {
+    const thread = await getThread(threadId);
+    if (thread && thread.kind === "client" && thread.channel === "sms" && thread.phone) return deliver(thread, message);
+  }
+  return message;
+}
+
+/** Send a saved message as a text and save how it went. */
+async function deliver(thread: Thread, message: Message): Promise<Message> {
+  let status: string;
+  let ref: string | null = null;
+  const provider = getSmsProvider();
+  if (thread.opted_out === 1) status = "failed: the client opted out of texts";
+  else if (!provider) status = "failed: texts are not set up";
+  else {
+    const result = await provider.send(thread.phone!, message.body).catch(() => ({ ok: false as const, reason: "could not send" }));
+    if (result.ok) { status = "sent"; ref = result.id || null; }
+    else {
+      status = `failed: ${result.reason}`;
+      // Never the full number or the text in the logs.
+      // The provider's reason can repeat the number: mask any long run of digits.
+      console.error(`Text to ${maskPhone(thread.phone!)} failed: ${result.reason.replace(/\+?\d[\d\s().-]{5,}\d/g, (n) => maskPhone(n))}`);
+    }
+  }
+  const rows = await query<Message>(
+    "UPDATE chat_messages SET delivery_status = ?, provider_ref = ? WHERE id = ? RETURNING *", [status.slice(0, 200), ref, message.id],
+  );
+  // The barber should see a text that did not go out.
+  if (status !== "sent") await run("UPDATE chat_threads SET needs_attention = 1 WHERE id = ?", [thread.id]);
+  return rows[0] ?? message;
 }
 
 /** Everything in the thread, notes too. For staff only. */

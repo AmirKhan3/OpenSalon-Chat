@@ -3,7 +3,7 @@
 export interface Service { id: number; name: string; description: string; duration: number; price: number; category: string }
 export interface Barber { id: number; name: string; title: string; color: string }
 export interface DayHours { closed: boolean; open: string; close: string }
-export interface Shop { name: string; address: string; timezone: string; hours: DayHours[]; booking_window_days: number }
+export interface Shop { name: string; address: string; timezone: string; hours: DayHours[]; booking_window_days: number; sms_number?: string }
 export interface PrepayPolicy { mode: "none" | "fixed" | "percent" | "full"; amount: number; percent: number; minimum: number; refund_window_hours: number; hold_minutes: number }
 export interface ShopData { shop: Shop; today: string; services: Service[]; barbers: Barber[]; prepay: PrepayPolicy }
 export interface Availability { slots: Slot[]; price: number; prepay_amount: number }

@@ -430,3 +430,37 @@ test("the inbox and the assistant need a staff login; the web chat does not", as
   assert.equal(r.status, 200);
   await agent.agentIdle();
 });
+
+test("a barber who takes over during a run stops booking changes", async () => {
+  script([{ tool: "book_appointment", input: { name: "Jamie Rivera", phone: JAMIE, date: TUE, time: "10:00", service_ids: [1] } }, "Booked."], 60);
+  const r = await call("POST", "/api/public/chat/messages", { message: "Book me Tuesday at 10. Yes." });
+  const id = (await inbox()).threads[0].id;
+  await call("POST", `/api/chat/threads/${id}/takeover`);
+  await agent.agentIdle();
+  assert.equal((await db.query("SELECT id FROM appointments")).length, 0);
+  assert.deepEqual((await clientSees(r.body.token)).messages.map((m: any) => m.sender), ["client"]);
+});
+
+test("the model fails after booking: the client still hears what was booked", async () => {
+  script([{ tool: "book_appointment", input: { name: "Jamie Rivera", phone: JAMIE, date: TUE, time: "10:00", service_ids: [1] } }, new Error("boom")]);
+  const token = await say("Book me Tuesday at 10. Yes.");
+  assert.equal((await db.query("SELECT id FROM appointments")).length, 1);
+  const chat = await clientSees(token);
+  const receipt = chat.messages.find((m: any) => m.sender === "agent");
+  assert.match(receipt.body, /Your visit is booked: Tuesday 2026-03-03 at 10:00 \(APT-\d+\)/);
+  assert.match(receipt.body, /\/book\/manage\//);
+  assert.equal(chat.mode, "human");
+});
+
+test("hand back after a failed run: the assistant answers the waiting client", async () => {
+  script([new Error("boom")]);
+  const token = await say("Are you open on Sunday?");
+  const id = (await inbox()).threads[0].id;
+  assert.equal((await clientSees(token)).messages.at(-1).sender, "system");
+
+  const seen = script(["We are closed on Sunday."]);
+  await call("POST", `/api/chat/threads/${id}/handback`);
+  await agent.agentIdle();
+  assert.equal(seen.calls, 1);
+  assert.equal((await clientSees(token)).messages.at(-1).body, "We are closed on Sunday.\n- Tolly");
+});

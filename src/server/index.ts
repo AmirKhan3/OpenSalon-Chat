@@ -7,6 +7,7 @@ import { oneAtATime } from "./lock.js";
 import { addMinutes, busyFor, nextIdentifier } from "./booking.js";
 import { registerSettingsRoutes } from "./settings.js";
 import { registerChatRoutes } from "./chat.js";
+import { registerSmsRoutes } from "./sms.js";
 import { registerPublicRoutes } from "./public.js";
 import { registerStripeRoutes, settlePrepayOnStaffChange } from "./prepay.js";
 import { registerAuthRoutes, requireStaff } from "./auth.js";
@@ -1186,5 +1187,6 @@ registerSettingsRoutes(app);
 registerPublicRoutes(app);
 registerStripeRoutes(app);
 registerChatRoutes(app);
+registerSmsRoutes(app);
 
 export default app;

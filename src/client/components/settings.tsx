@@ -24,7 +24,8 @@ interface ShopSettings {
   sign_messages: boolean;
   agent_instructions: string;
 }
-interface SettingsReply { settings: ShopSettings; stripe_connected: boolean }
+interface SmsInfo { provider: string; connected: boolean; from_number: string; webhook_url: string }
+interface SettingsReply { settings: ShopSettings; stripe_connected: boolean; sms: SmsInfo }
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const SLOT_STEPS = [10, 15, 20, 30, 45, 60];
@@ -49,6 +50,7 @@ function timeZones(): string[] {
 export function SettingsPage() {
   const [settings, setSettings] = useState<ShopSettings | null>(null);
   const [stripeConnected, setStripeConnected] = useState(false);
+  const [sms, setSms] = useState<SmsInfo | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -56,7 +58,7 @@ export function SettingsPage() {
 
   useEffect(() => {
     api<SettingsReply>("GET", "/api/settings")
-      .then((r) => { setSettings(r.settings); setStripeConnected(r.stripe_connected); })
+      .then((r) => { setSettings(r.settings); setStripeConnected(r.stripe_connected); setSms(r.sms); })
       .catch((e: Error) => setLoadError(e.message));
   }, []);
 
@@ -278,10 +280,65 @@ export function SettingsPage() {
         </CardContent>
       </Card>
 
+      {sms && <Connections sms={sms} stripeConnected={stripeConnected} />}
+
       <div className="flex items-center gap-3">
         <Button type="submit" disabled={saving}>{saving ? "Saving..." : "Save settings"}</Button>
         {message && <p role="status" className={`text-sm ${message.ok ? "text-muted-foreground" : "text-destructive"}`}>{message.text}</p>}
       </div>
     </form>
+  );
+}
+
+const PROVIDERS: Record<string, string> = { telnyx: "Telnyx", twilio: "Twilio" };
+
+/** What is connected. Keys are set on the server, never here. */
+function Connections({ sms, stripeConnected }: { sms: SmsInfo; stripeConnected: boolean }) {
+  const [copied, setCopied] = useState(false);
+  const provider = PROVIDERS[sms.provider] ?? "";
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(sms.webhook_url);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch { /* the address is on the screen: the barber can select it */ }
+  };
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-base">Connections</CardTitle></CardHeader>
+      <CardContent className="space-y-4 text-sm">
+        <div className="space-y-2">
+          <p className="font-medium">Texts (SMS)</p>
+          {sms.connected ? (
+            <dl className="grid gap-x-4 gap-y-1 sm:grid-cols-[8rem_1fr]">
+              <dt className="text-muted-foreground">Provider</dt><dd>{provider || "Connected"}</dd>
+              <dt className="text-muted-foreground">Shop number</dt><dd>{sms.from_number}</dd>
+            </dl>
+          ) : (
+            <p className="text-muted-foreground">
+              {provider
+                ? `${provider} is not ready. Check the key and the shop number on the server.`
+                : "Texts are off. Set TELNYX_API_KEY and TELNYX_FROM_NUMBER on the server to turn them on."}
+            </p>
+          )}
+          <div className="space-y-1.5">
+            <Label htmlFor="sms-webhook">Webhook address for incoming texts</Label>
+            <div className="flex gap-2">
+              <Input id="sms-webhook" readOnly value={sms.webhook_url} onFocus={(e: FocusEvent) => (e.currentTarget as HTMLInputElement).select()} />
+              <Button type="button" variant="outline" onClick={copy}>{copied ? "Copied" : "Copy"}</Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Paste this address at your text provider, as the webhook for incoming messages. It must be an https address that the internet can reach.
+            </p>
+          </div>
+        </div>
+        <div className="space-y-1 border-t pt-4">
+          <p className="font-medium">Payments (Stripe)</p>
+          <p className="text-muted-foreground">
+            {stripeConnected ? "Connected." : "Not connected. Set STRIPE_SECRET_KEY on the server to take pre-pay."}
+          </p>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

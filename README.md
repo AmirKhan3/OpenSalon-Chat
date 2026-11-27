@@ -101,6 +101,36 @@ To turn the assistant on, set `AI_GATEWAY_API_KEY` (Vercel AI Gateway) or `ANTHR
 With no key, every chat goes straight to a barber.
 Change the assistant's name, signature, and extra instructions in the dashboard under Settings.
 
+## Texts (SMS)
+
+Clients text the shop. Tolly answers first. A barber reads and answers in the Inbox, not on their own phone.
+
+**Set up Telnyx (default)**
+
+1. Buy a number in the Telnyx portal and add it to a messaging profile.
+2. Set `TELNYX_API_KEY`, `TELNYX_FROM_NUMBER` and `TELNYX_PUBLIC_KEY` (and `TELNYX_MESSAGING_PROFILE_ID` if you like). Set `PUBLIC_URL` too.
+3. In the messaging profile, set the webhook address to `<PUBLIC_URL>/api/sms/telnyx`. Settings -> Connections shows the exact address.
+
+**Or Twilio**
+
+Set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` and `PUBLIC_URL`. On the number, set "A message comes in" to `<PUBLIC_URL>/api/sms/twilio` (HTTP POST). If both providers have keys, set `SMS_PROVIDER`.
+
+**Register before you text US numbers**
+
+US carriers block texts from numbers that are not registered. Do this first. It can take days or weeks.
+
+- A normal 10-digit number needs **A2P 10DLC** registration: register your business as a "brand", then a "campaign" that says what you send (appointment texts) and how clients agree to it, then link the number to the campaign. Both Telnyx and Twilio have this in their portal.
+- A toll-free number (800, 888, ...) needs **toll-free verification** instead.
+
+The booking page shows the consent line carriers ask for: "We'll text you about this booking. Reply STOP to opt out."
+
+**How it works**
+
+- Every webhook is checked: Telnyx with an Ed25519 signature (and not older than 5 minutes), Twilio with its HMAC signature. The server answers the webhook at once and runs the assistant after.
+- One thread per phone number. The number a text comes from is the client. Tolly never asks for it and can only see, move or cancel bookings of that number.
+- STOP (also STOPALL, UNSUBSCRIBE, CANCEL, END, QUIT) turns texts off for that number. START or UNSTOP turns them on again. HELP is answered by the provider.
+- Each text we send is saved as "sent" or "failed" with the reason. The Inbox shows failed texts.
+
 ## Settings
 
 Copy `.env.example` to `.env` and fill in what you need. Never put secrets in the code.
