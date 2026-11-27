@@ -3,6 +3,7 @@ import { get, query, run } from "./db.js";
 import { isFree, loadDay } from "./availability.js";
 import { toMinutes } from "./scheduling.js";
 import { getSettings, type ShopSettings } from "./settings.js";
+import { emitBookingEvent } from "./events.js";
 import { daysBetween, shopNow, wallClock } from "./shoptime.js";
 import { getStripe, stripeConnected, stripeCurrency, verifyWebhook } from "./stripe.js";
 
@@ -176,6 +177,7 @@ export async function markPaid(sessionId: string, paymentIntent: string | null):
         [paymentIntent, row.id],
       );
       await note(row.id, `Pre-pay of ${amount} received after the hold ended. The time was still free, so the booking is confirmed.`);
+      await emitBookingEvent("prepay_paid", row.id);
       return "confirmed";
     }
     await run(
@@ -192,6 +194,7 @@ export async function markPaid(sessionId: string, paymentIntent: string | null):
     [paymentIntent, row.id],
   );
   await note(row.id, `Pre-pay of ${amount} received. The booking is confirmed.`);
+  await emitBookingEvent("prepay_paid", row.id);
   return "confirmed";
 }
 

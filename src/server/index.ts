@@ -8,6 +8,8 @@ import { addMinutes, busyFor, nextIdentifier } from "./booking.js";
 import { registerSettingsRoutes } from "./settings.js";
 import { registerChatRoutes } from "./chat.js";
 import { registerSmsRoutes } from "./sms.js";
+import { registerAutomationRoutes } from "./automations.js";
+import { emitBookingEvent } from "./events.js";
 import { registerPublicRoutes } from "./public.js";
 import { registerStripeRoutes, settlePrepayOnStaffChange } from "./prepay.js";
 import { registerAuthRoutes, requireStaff } from "./auth.js";
@@ -500,6 +502,7 @@ app.openapi(createAppointment, async (c) => {
     [aptId],
   );
 
+  await emitBookingEvent("booking_created", Number(aptId));
   return c.json({ appointment: apt }, 201);
 });
 
@@ -589,6 +592,8 @@ app.openapi(updateAppointment, async (c) => {
   sets.push("updated_at = utc_now()");
   await run(`UPDATE appointments SET ${sets.join(", ")} WHERE id = ?`, [...params, id]);
   await settlePrepayOnStaffChange(id, existing.status, status);
+  if (status === "cancelled" && existing.status !== "cancelled") await emitBookingEvent("booking_cancelled", id);
+  else if (status !== "cancelled" && (date !== existing.scheduled_date || startTime !== existing.start_time)) await emitBookingEvent("booking_moved", id);
   return c.json({ ok: true }, 200);
 });
 
@@ -1188,5 +1193,6 @@ registerPublicRoutes(app);
 registerStripeRoutes(app);
 registerChatRoutes(app);
 registerSmsRoutes(app);
+registerAutomationRoutes(app);
 
 export default app;

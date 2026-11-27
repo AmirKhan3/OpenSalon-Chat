@@ -3,7 +3,7 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { getSettings, type ShopSettings } from "./settings.js";
 import { addDays, shopNow, weekdayOf } from "./shoptime.js";
 import { money, publicPrepayPolicy } from "./prepay.js";
-import { addMessage, getThread, handToBarber, messagesForAgent, type Message, type Thread } from "./chatstore.js";
+import { addMessage, assistantThread, getThread, handToBarber, messagesForAgent, type Message, type Thread } from "./chatstore.js";
 import { clientTools, DAYS, type ClientContext } from "./clienttools.js";
 import { staffTools } from "./stafftools.js";
 
@@ -280,4 +280,41 @@ async function giveUp(thread: Thread, reason: string): Promise<void> {
     return;
   }
   await handToBarber(thread.id, reason, true);
+}
+
+// ── Automation tasks ───────────────────────────────────────────────
+
+const AUTOMATION_RULES = [
+  "This is an automation run: a routine the owner set up. Nobody is in the chat right now.",
+  "- Do the task below with your tools. Do not ask questions: nobody can answer.",
+  "- You must not create, change or delete automations in this run.",
+  "- End with a short report for the owner: what you did and what you found. Plain text, a few lines.",
+].join("\n");
+
+/**
+ * Run a task for an automation with the staff tools. Posts a short report in
+ * the owner's assistant chat. Never throws.
+ */
+export async function runStaffTask(name: string, instructions: string): Promise<{ ok: boolean; text: string }> {
+  const thread = await assistantThread();
+  const model = resolveModel();
+  if (!model) return { ok: false, text: "The assistant is not set up." };
+  const settings = await getSettings();
+  try {
+    const result = await generateText({
+      model,
+      system: `${staffPrompt(settings)}\n\n${AUTOMATION_RULES}`,
+      messages: [{ role: "user", content: instructions }],
+      tools: staffTools(),
+      stopWhen: stepCountIs(MAX_STEPS),
+      abortSignal: AbortSignal.timeout(90_000),
+    });
+    const text = result.text.trim() || "Done. Nothing to report.";
+    await addMessage(thread.id, "agent", `Automation "${name}": ${text}`);
+    return { ok: true, text };
+  } catch (err) {
+    console.error(`Automation task failed: ${err instanceof Error ? err.message : "unknown error"}`);
+    await addMessage(thread.id, "system", `The automation "${name}" could not run. The assistant had an error.`);
+    return { ok: false, text: "The assistant had an error." };
+  }
 }

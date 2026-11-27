@@ -1,4 +1,5 @@
 import { dbGeneration, get, query, run } from "./db.js";
+import { ensureDefaultAutomations } from "./automations.js";
 
 /**
  * Sample barbershop data + the appointment counter rows.
@@ -61,6 +62,7 @@ export async function ensureSeeded(): Promise<void> {
       await seedIfEmpty("services", ["id", "name", "description", "duration", "price", "color", "category"], SERVICES);
       await seedIfEmpty("clients", ["id", "name", "email", "phone"], CLIENTS);
     }
+    await ensureDefaultAutomations();
     seededGeneration = dbGeneration();
   } catch (err) {
     // Sample data must never fail a request. Try again on the next one.

@@ -19,6 +19,8 @@ export const SettingsSchema = z.object({
   shop_name: z.string().trim().min(1, "Enter the shop name.").max(100),
   timezone: z.string().refine(isValidTimeZone, { message: "Unknown time zone. Use a name like America/New_York." }),
   address: z.string().trim().max(300),
+  /** How to get in: parking, door code, which floor. Texts can include it. */
+  access_instructions: z.string().trim().max(500),
   /** 7 entries. Index 0 is Sunday. */
   hours: z.array(DayHoursSchema).length(7),
   /** Minutes between start times. */
@@ -56,6 +58,7 @@ export function defaultSettings(): ShopSettings {
     shop_name: "Our Barbershop",
     timezone: isValidTimeZone(tz) ? tz : "America/New_York",
     address: "",
+    access_instructions: "",
     hours: [{ closed: true, open: "09:00", close: "18:00" }, open(), open(), open(), open(), open(), open()],
     slot_step: 30,
     min_notice: 60,

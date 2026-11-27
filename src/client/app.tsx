@@ -16,6 +16,7 @@ import { ServiceList } from "./components/service-list";
 import { ProductList } from "./components/product-list";
 import { SettingsPage } from "./components/settings";
 import { Inbox } from "./components/inbox";
+import { AutomationsPage } from "./components/automations";
 import { AssistantPage } from "./components/assistant";
 import { ErrorBanner } from "./components/error-banner";
 
@@ -101,6 +102,7 @@ function Shell({ onLogout }: { onLogout?: () => void }) {
       case "staff": return <StaffList />;
       case "services": return <ServiceList />;
       case "products": return <ProductList />;
+      case "automations": return <AutomationsPage />;
       case "settings": return <SettingsPage />;
       default: return <Dashboard />;
     }

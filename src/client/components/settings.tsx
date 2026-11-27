@@ -11,6 +11,7 @@ interface ShopSettings {
   shop_name: string;
   timezone: string;
   address: string;
+  access_instructions: string;
   hours: DayHours[];
   slot_step: number;
   min_notice: number;
@@ -104,6 +105,7 @@ export function SettingsPage() {
     try {
       const r = await api<SettingsReply>("PUT", "/api/settings", {
         ...settings, shop_name: settings.shop_name.trim(), timezone: settings.timezone.trim(), address: settings.address.trim(),
+        access_instructions: settings.access_instructions.trim(),
         agent_name: settings.agent_name.trim(), agent_instructions: settings.agent_instructions.trim(),
       });
       setSettings(r.settings);
@@ -139,6 +141,12 @@ export function SettingsPage() {
           <div className="space-y-1.5">
             <Label htmlFor="shop-address">Address</Label>
             <Input id="shop-address" value={settings.address} maxLength={300} onInput={(e: Event) => set({ address: val(e) })} />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="shop-access">How to get in</Label>
+            <Input id="shop-access" value={settings.access_instructions} maxLength={500} placeholder="Park in the back. Ring the bell at the side door."
+              onInput={(e: Event) => set({ access_instructions: val(e) })} />
+            <p className="text-xs text-muted-foreground">Parking, door code, which floor. Automatic texts can include it.</p>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="shop-timezone">Time zone</Label>

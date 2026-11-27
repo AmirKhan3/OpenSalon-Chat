@@ -1,6 +1,6 @@
 import { useEffect, useState } from "preact/hooks";
 import { useApp } from "../context";
-import { Scissors, Menu, LayoutDashboard, CalendarDays, Clock, Users, UserCog, Sparkles, Package, LogOut, Settings, Inbox as InboxIcon, Bot } from "lucide-preact";
+import { Scissors, Menu, LayoutDashboard, CalendarDays, Clock, Users, UserCog, Sparkles, Package, LogOut, Settings, Inbox as InboxIcon, Bot, Zap } from "lucide-preact";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +28,7 @@ const navItems: { view: View; path: string; label: string; icon: typeof LayoutDa
   { view: "dashboard", path: "/", label: "Dashboard", icon: LayoutDashboard },
   { view: "inbox", path: "/inbox", label: "Inbox", icon: InboxIcon },
   { view: "assistant", path: "/assistant", label: "Assistant", icon: Bot },
+  { view: "automations", path: "/automations", label: "Automations", icon: Zap },
   { view: "calendar", path: "/calendar", label: "Calendar", icon: CalendarDays },
   { view: "appointments", path: "/appointments", label: "Appointments", icon: Clock },
   { view: "clients", path: "/clients", label: "Clients", icon: Users },

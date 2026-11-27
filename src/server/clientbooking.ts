@@ -5,6 +5,7 @@ import { toMinutes } from "./scheduling.js";
 import { getSettings } from "./settings.js";
 import { candidateStarts, isFree, loadDay, pickBarber } from "./availability.js";
 import { minutesToTime, shopNow, timeToMinutes } from "./shoptime.js";
+import { emitBookingEvent } from "./events.js";
 import { holdEnd, prepayFor, releaseExpiredHolds, settlePrepayOnCancel, startCheckout } from "./prepay.js";
 
 /**
@@ -278,6 +279,7 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
     await note(id, "Waiting for the pre-pay. The time is held until it is paid or the hold ends.");
   }
 
+  await emitBookingEvent("booking_created", id);
   return { ok: true, id, token, reference, clientId: client.id, ...(checkoutUrl ? { checkoutUrl } : {}) };
 }
 
@@ -312,6 +314,7 @@ export async function cancelBooking(row: BookingRow, how: string): Promise<Chang
   await run("UPDATE appointments SET status = 'cancelled', updated_at = utc_now() WHERE id = ?", [row.id]);
   await note(row.id, `Cancelled ${how} by the client.`);
   await settlePrepayOnCancel(row, settings);
+  await emitBookingEvent("booking_cancelled", row.id);
   return { ok: true };
 }
 
@@ -367,5 +370,6 @@ export async function moveBooking(row: BookingRow, date: string, time: string, h
     [date, minutesToTime(start), minutesToTime(end), barber, row.id],
   );
   await note(row.id, `Moved ${how} by the client, from ${row.scheduled_date} ${row.start_time} to ${date} ${minutesToTime(start)}.`);
+  await emitBookingEvent("booking_moved", row.id);
   return { ok: true };
 }

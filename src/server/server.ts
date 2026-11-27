@@ -9,6 +9,7 @@ import { ensureSeeded } from "./seed.js";
 import { checkAuthConfig } from "./auth.js";
 import { oneAtATime } from "./lock.js";
 import { releaseExpiredHolds } from "./prepay.js";
+import { tick } from "./automations.js";
 
 /**
  * The Node server: the API plus the built web app from dist/.
@@ -73,6 +74,10 @@ async function main(): Promise<void> {
   // Every minute: release bookings whose pre-pay was not paid in time.
   setInterval(() => {
     oneAtATime(releaseExpiredHolds).catch((err) => console.error("Could not release holds:", err instanceof Error ? err.message : err));
+  }, 60_000).unref();
+  // Every minute: run the automations whose moment came.
+  setInterval(() => {
+    tick().catch((err) => console.error("Automations failed:", err instanceof Error ? err.message : err));
   }, 60_000).unref();
   const stop = () => {
     server.close(() => {

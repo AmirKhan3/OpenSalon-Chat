@@ -191,3 +191,38 @@ CREATE INDEX IF NOT EXISTS idx_chat_threads_phone ON chat_threads(phone);
 ALTER TABLE chat_threads ADD COLUMN IF NOT EXISTS opted_out INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS provider_ref TEXT;
 CREATE INDEX IF NOT EXISTS idx_chat_messages_ref ON chat_messages(provider_ref);
+
+-- Automations: routines the owner (or the assistant) sets up once. The server runs them.
+-- trigger: daily | before_appointment | after_appointment | booking_created | prepay_paid | booking_cancelled | booking_moved
+-- action: text_client | agent_task
+-- created_by: system | staff | agent
+-- armed_at: when it was made, turned on, or its timing changed. It never fires for a moment before that.
+CREATE TABLE IF NOT EXISTS automations (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  trigger TEXT NOT NULL,
+  trigger_config TEXT NOT NULL DEFAULT '{}',
+  action TEXT NOT NULL,
+  action_config TEXT NOT NULL DEFAULT '{}',
+  filters TEXT NOT NULL DEFAULT '{}',
+  created_by TEXT NOT NULL DEFAULT 'staff',
+  builtin_key TEXT,
+  armed_at TEXT NOT NULL,
+  created_at TEXT DEFAULT utc_now(),
+  updated_at TEXT DEFAULT utc_now()
+);
+
+-- One row per time an automation acted. run_key is claimed BEFORE acting,
+-- so the same reminder is never sent twice.
+-- status: running | sent | done | skipped | failed
+CREATE TABLE IF NOT EXISTS automation_runs (
+  id SERIAL PRIMARY KEY,
+  automation_id INTEGER NOT NULL REFERENCES automations(id) ON DELETE CASCADE,
+  appointment_id INTEGER REFERENCES appointments(id) ON DELETE SET NULL,
+  run_key TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'running',
+  detail TEXT NOT NULL DEFAULT '',
+  created_at TEXT DEFAULT utc_now()
+);
+CREATE INDEX IF NOT EXISTS idx_automation_runs_automation ON automation_runs(automation_id, id);
