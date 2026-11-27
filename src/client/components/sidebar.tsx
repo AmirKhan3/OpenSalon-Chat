@@ -130,7 +130,7 @@ export function Sidebar({ currentView, onLogout }: { currentView: View; onLogout
       <aside className="hidden w-60 shrink-0 border-r md:block print:hidden">
         <SidebarContent currentView={currentView} onLogout={onLogout} />
       </aside>
-      <header className="flex shrink-0 items-center justify-between gap-3 border-b bg-sidebar px-4 py-2 md:hidden print:hidden">
+      <header className="flex shrink-0 items-center justify-between gap-3 border-b bg-sidebar px-4 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] md:hidden print:hidden">
         <span className="flex items-center gap-2 text-sm font-semibold">
           <Scissors className="h-4 w-4 text-primary" />
           Tolly
@@ -142,7 +142,7 @@ export function Sidebar({ currentView, onLogout }: { currentView: View; onLogout
               Menu
             </Button>
           </DialogTrigger>
-          <DialogContent aria-describedby={undefined} className="left-0 top-0 flex h-dvh w-80 max-w-[calc(100%-2rem)] translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0 sm:rounded-none [&>button]:flex [&>button]:h-11 [&>button]:w-11 [&>button]:items-center [&>button]:justify-center [&>button]:right-2 [&>button]:top-3">
+          <DialogContent aria-describedby={undefined} className="left-0 top-0 flex h-dvh w-80 max-w-[calc(100%-2rem)] translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0 pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] sm:rounded-none [&>button]:flex [&>button]:h-11 [&>button]:w-11 [&>button]:items-center [&>button]:justify-center [&>button]:right-2 [&>button]:top-3">
             <DialogTitle className="sr-only">Navigation menu</DialogTitle>
             <SidebarContent currentView={currentView} onNavigate={() => setOpen(false)} onLogout={onLogout} />
           </DialogContent>

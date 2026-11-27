@@ -1,3 +1,5 @@
+// Keep this import first: it reads the .env file before other modules load.
+import { isServerEntry } from "./env.js";
 import { existsSync, readFileSync } from "node:fs";
 import { extname, resolve } from "node:path";
 import { serve } from "@hono/node-server";
@@ -91,8 +93,7 @@ async function main(): Promise<void> {
 }
 
 // Start only when this file is the entry point (not when a test imports it).
-const entry = process.argv[1] ? resolve(process.argv[1]) : "";
-if (entry.endsWith("server.ts") || entry.endsWith("server.js")) {
+if (isServerEntry(process.argv[1])) {
   main().catch((err) => {
     console.error("Tolly could not start:", err instanceof Error ? err.message : err);
     process.exit(1);

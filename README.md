@@ -1,155 +1,255 @@
 # Tolly
 
-An AI assistant and booking app for one barbershop: scheduling, messaging, automations, and reports.
+An AI assistant and booking app for one barbershop.
 
 Tolly is a fork of [OpenSalon](https://github.com/clawnify/OpenSalon) (MIT, Copyright (c) 2026 Clawnify). See [LICENSE](LICENSE).
 
-This README is short on purpose. It grows as the app is built.
+## What it does
+
+- **Clients text the shop.** Tolly, the assistant, answers first. It finds open times, books, moves, and cancels visits. Clients never install an app.
+- **Clients can also book on a web page** (`/book`), pay a pre-pay with Stripe, and add the visit to their calendar.
+- **Barbers use the dashboard.** They see the calendar, read and answer texts in the Inbox, record payments, and read reports.
+- **Tolly is the barber's assistant too.** In a private chat it answers questions like "What do I have tomorrow?" and changes the schedule.
+- **Automations** send texts by themselves: reminders, confirmations, a daily summary.
+- **Reports** show the money really taken, for taxes and proof of income.
+
+## How it works
+
+```
+  Client's phone                 Tolly server (Node + Hono)                 Barber
+ ───────────────          ─────────────────────────────────────         ─────────────
+                           ┌─────────────────────────────────┐
+  SMS  ───── Telnyx ─────► │ /api/sms/*   webhook (signed)   │
+       ◄──── (or Twilio) ─ │        │                        │
+                           │        ▼                        │
+                           │  Tolly, the AI agent            │ ◄────►  Dashboard (web)
+  Booking page (/book) ──► │  client tools: own bookings only│          Inbox, Calendar,
+  Web chat             ──► │  staff tools: the barber's chat │          Reports, Settings,
+                           │        │                        │          private chat
+                           │        ▼                        │
+  Stripe pay page ◄──────► │  Bookings · Payments · Chats    │ ────►   Calendar feed
+       (pre-pay)   webhook │  Automations (every minute)     │         (phone calendar)
+                           └───────────────┬─────────────────┘
+                                           ▼
+                                Postgres (or embedded PGlite)
+```
+
+The order of work is: **client -> Tolly -> barber**. Tolly answers first. When it cannot help, it gives the chat to a barber.
+When a barber writes in a chat, Tolly stops in that chat until the barber hands it back.
+
+One server process does everything: the API, the built web app, and the timers for automations and unpaid holds.
 
 ## Run it on your computer
 
-You need Node.js 22 or newer and pnpm. You do not need a database.
+You need Node.js 22 or newer and pnpm. You do not need a database or any keys.
 
 ```bash
 pnpm install
+```
+
+```bash
 pnpm dev
 ```
 
-Open `http://localhost:5173`. The API runs on `http://localhost:8787`.
+Open `http://localhost:5173`. The API runs on `http://localhost:8787`. The booking page is `http://localhost:5173/book`.
 
 With no `DATABASE_URL`, Tolly uses an embedded Postgres (PGlite) and keeps its data in `./.data/pglite`.
 On first start it adds sample data: 3 barbers, 6 services, 3 clients. Set `SEED_DEMO_DATA=false` to turn that off.
 
-## Run it like production
+To run it the way a real server does:
 
 ```bash
 pnpm build
+```
+
+```bash
 pnpm start
 ```
 
 `pnpm start` serves the API and the built web app on one port (`PORT`, default 8787).
 
-## Use a real Postgres
+## Settings (.env)
 
-Set `DATABASE_URL`, for example:
+Copy `.env.example` to `.env` and fill in what you need. The server reads `.env` when it starts.
+A variable that is already set (by your shell, Docker, or your host) wins over the file.
 
-```bash
-DATABASE_URL=postgres://user:password@localhost:5432/tolly pnpm start
-```
+Every variable is listed and explained in [.env.example](.env.example). Never put secrets in the code, and never commit `.env`.
 
-Tolly creates its tables on start. It is safe to start it again and again.
+Everything is optional on your computer. With no keys, texts, pre-pay, and the assistant are off, and the rest still works.
 
-## Staff login
+## Set up Postgres
 
-Set `STAFF_PASSWORD` to protect the dashboard. Staff share this one password.
-Set `SESSION_SECRET` too, so logins survive a restart.
+Use a real Postgres on a real server. Any recent Postgres works (your own, or a hosted one).
 
-- With `NODE_ENV=production`, the server does not start without `STAFF_PASSWORD`.
-- In development, an empty `STAFF_PASSWORD` turns login off.
-- After 5 wrong passwords, that address must wait 5 minutes.
-- Behind a reverse proxy, set `TRUST_PROXY=1`. Then make sure the server port can be reached only through the proxy.
-- Always set `NODE_ENV=production` on a real server.
-- Logging out clears the cookie in that browser. To end every login at once, change `STAFF_PASSWORD` or `SESSION_SECRET`.
+1. Create an empty database, for example `createdb tolly`.
+2. Set `DATABASE_URL`, for example `postgres://user:password@localhost:5432/tolly`.
+3. Start the server. Tolly creates its tables by itself. It is safe to start it again and again.
 
-## Client booking page
+Set `SEED_DEMO_DATA=false` if you do not want the sample barbers and services.
 
-Clients book at `/book` (in development: `http://localhost:5173/book`). They pick services, a barber, and a time.
-Each booking gets a private link (`/book/manage/...`) where the client can see or cancel it.
+## Set up the AI key
 
-In the dashboard, open **Settings** to set the shop name, time zone, address, opening hours,
-how often times start, the minimum notice, and how many days ahead clients can book.
-All times are stored in shop time. `SHOP_TIMEZONE` is the time zone used until you save one.
+Set **one** of these:
 
-## Pre-pay with Stripe
+- `AI_GATEWAY_API_KEY`: a Vercel AI Gateway key. It works with many model providers.
+- `ANTHROPIC_API_KEY`: an Anthropic key, to call Anthropic directly.
+
+Pick the model with `AGENT_MODEL`. With the gateway, write it as the gateway lists it (`provider/model`).
+Check that the model name exists in your account before you go live.
+
+With no key, the assistant is off and every chat goes straight to a barber.
+Change the assistant's name, signature, and extra instructions in the dashboard under **Settings**.
+
+## Set up texts (Telnyx)
+
+Telnyx is the default provider.
+
+1. Buy a number in the Telnyx portal and add it to a messaging profile.
+2. Set `TELNYX_API_KEY`, `TELNYX_FROM_NUMBER`, and `TELNYX_PUBLIC_KEY`. `TELNYX_MESSAGING_PROFILE_ID` is optional. Set `PUBLIC_URL` too.
+3. In the messaging profile, set the webhook address to `<PUBLIC_URL>/api/sms/telnyx`. **Settings -> Connections** shows the exact address.
+4. Register the number (see below). Then send a text to the number to test it.
+
+**Register before you text US numbers (10DLC)**
+
+US carriers block texts from numbers that are not registered. Do this first. It can take days or weeks.
+
+- A normal 10-digit number needs **A2P 10DLC** registration. In the Telnyx portal: register your business as a "brand". Then make a "campaign" that says what you send (appointment texts) and how clients agree to it. Then link the number to the campaign.
+- A toll-free number (800, 888, ...) needs **toll-free verification** instead.
+
+The booking page shows the consent line carriers ask for: "We'll text you about this booking. Reply STOP to opt out."
+
+**Or Twilio**
+
+Set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`, and `PUBLIC_URL`. On the number, set "A message comes in" to `<PUBLIC_URL>/api/sms/twilio` (HTTP POST). Twilio needs the same 10DLC registration. If both providers have keys, set `SMS_PROVIDER`.
+
+**How texts work**
+
+- Every webhook is checked: Telnyx with an Ed25519 signature (and not older than 5 minutes), Twilio with its HMAC signature.
+- One thread per phone number. The number a text comes from is the client. Tolly can only see, move, or cancel bookings of that number.
+- STOP (also STOPALL, UNSUBSCRIBE, CANCEL, END, QUIT, REVOKE, OPTOUT) turns texts off for that number. START or UNSTOP turns them on again.
+- Each text we send is saved as "sent" or "failed" with the reason. The Inbox shows failed texts.
+- The barber reads and answers in the Inbox, not on their own phone.
+
+## Set up payments (Stripe)
 
 Clients can pay part or all of the price when they book online. We call this "pre-pay".
 
-In Settings -> Pre-pay, choose what clients pay: nothing, a fixed amount, a percent of the price, or the full price.
-You also set the refund window (hours) and the hold time (minutes, at least 30).
+1. Put your Stripe secret key in `STRIPE_SECRET_KEY`, and the public address of the server in `PUBLIC_URL`.
+2. In the Stripe Dashboard, add a webhook endpoint at `<PUBLIC_URL>/api/stripe/webhook`. Send these events:
+   - `checkout.session.completed`
+   - `checkout.session.async_payment_succeeded`
+   - `checkout.session.async_payment_failed`
+   - `checkout.session.expired`
+   - `charge.refunded`
+3. Put the signing secret of that endpoint in `STRIPE_WEBHOOK_SECRET`.
+4. In **Settings -> Pre-pay**, choose what clients pay: nothing, a fixed amount, a percent of the price, or the full price. Set the refund window (hours) and the hold time (minutes) too.
 
-How it works:
+To test on your computer, use test keys and `stripe listen --forward-to localhost:8787/api/stripe/webhook`.
+
+**How pre-pay works**
 
 1. The client books. The booking is "Waiting for pre-pay" and the time is held.
 2. The client pays on a Stripe page. Stripe tells the server, and the booking is confirmed.
 3. If the client does not pay before the hold ends, the booking is cancelled and the time is open again.
 4. If the client pays after the hold ended, the booking is confirmed only if the time is still free. If not, the appointment gets a note that asks you to refund the payment in Stripe.
-5. If the client cancels at least the refund window before the visit, the pre-pay is refunded automatically. Later than that, it is not refunded.
-
-Set it up:
-
-1. Put your Stripe secret key in `STRIPE_SECRET_KEY`, and the public address of the server in `PUBLIC_URL`.
-2. In the Stripe Dashboard, add a webhook endpoint at `<PUBLIC_URL>/api/stripe/webhook` with these events:
-   `checkout.session.completed`, `checkout.session.async_payment_succeeded`,
-   `checkout.session.async_payment_failed`, `checkout.session.expired`, `charge.refunded`.
-3. Put the signing secret of that endpoint in `STRIPE_WEBHOOK_SECRET`.
+5. If the client cancels at least the refund window before the visit, the pre-pay is refunded automatically. Later than that, it is not refunded. A change made by staff never refunds by itself.
 
 Without `STRIPE_SECRET_KEY` there is no pre-pay, and bookings are confirmed at once.
-To test on your computer, use test keys and `stripe listen --forward-to localhost:8787/api/stripe/webhook`.
 
-## The assistant and chat
+**Payments in the shop**
 
-Clients chat with the shop from the booking page. The assistant answers first. Its name is "Tolly" by default.
-It can list services, find open times, and book a visit. When it cannot help, it gives the chat to a barber.
+Take the card with the Stripe Dashboard app (tap to pay), or take cash. Then open the appointment in the dashboard and record the payment and the tip.
+Reports count every recorded payment and every pre-pay.
 
-- Barbers read and answer chats in the dashboard at `/inbox`. "Take over" stops the assistant. "Hand back to AI" starts it again.
-- When a barber writes a reply, the assistant stops in that chat by itself.
-- Staff notes in a chat are for staff only. Clients and the assistant never see them.
-- The barber has a private chat with the assistant at `/assistant`. Clients never see it.
-- In the web chat nobody checks the phone number. So the assistant cannot look up, move, or cancel a booking there. It sends the client to the manage link.
+## Deploy
 
-To turn the assistant on, set `AI_GATEWAY_API_KEY` (Vercel AI Gateway) or `ANTHROPIC_API_KEY`. Pick the model with `AGENT_MODEL`.
-With no key, every chat goes straight to a barber.
-Change the assistant's name, signature, and extra instructions in the dashboard under Settings.
+The [Dockerfile](Dockerfile) builds the web app and runs the server. One container is the whole app.
 
-## Texts (SMS)
+```bash
+docker build -t tolly .
+```
 
-Clients text the shop. Tolly answers first. A barber reads and answers in the Inbox, not on their own phone.
+```bash
+docker run -p 8787:8787 --env-file .env tolly
+```
 
-**Set up Telnyx (default)**
+The image sets `NODE_ENV=production`. **In production the server does not start without `STAFF_PASSWORD`.**
 
-1. Buy a number in the Telnyx portal and add it to a messaging profile.
-2. Set `TELNYX_API_KEY`, `TELNYX_FROM_NUMBER` and `TELNYX_PUBLIC_KEY` (and `TELNYX_MESSAGING_PROFILE_ID` if you like). Set `PUBLIC_URL` too.
-3. In the messaging profile, set the webhook address to `<PUBLIC_URL>/api/sms/telnyx`. Settings -> Connections shows the exact address.
+Set these on a real server:
 
-**Or Twilio**
+| Variable | Why |
+| --- | --- |
+| `STAFF_PASSWORD` | Protects the dashboard. Staff share this one password. Required. |
+| `SESSION_SECRET` | Keeps staff logged in when the server restarts. |
+| `DATABASE_URL` | A real Postgres. Without it, data lives inside the container and is lost with it. |
+| `PUBLIC_URL` | The https address clients reach. Links in texts, payment pages, and calendar files use it. |
+| `TRUST_PROXY` | `1` if a reverse proxy or load balancer is in front (it almost always is). |
+| `SHOP_TIMEZONE` | The shop's time zone, until you save one in Settings. |
 
-Set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` and `PUBLIC_URL`. On the number, set "A message comes in" to `<PUBLIC_URL>/api/sms/twilio` (HTTP POST). If both providers have keys, set `SMS_PROVIDER`.
+Then add the keys for texts, Stripe, and the AI from the sections above.
 
-**Register before you text US numbers**
+Good to know:
 
-US carriers block texts from numbers that are not registered. Do this first. It can take days or weeks.
+- Serve it over **https**. Put a proxy in front (Caddy, nginx, or your host's own), and make sure the server port can be reached only through that proxy.
+- Without `TRUST_PROXY`, every visitor behind the proxy looks like one address. They then share one login limit and one web chat limit.
+- Run **one** container. The login limit, the chat limit, and the timers for automations live in that one process.
+- The health check is `GET /api/health`.
+- Without Docker: `pnpm install`, `pnpm build`, then `NODE_ENV=production pnpm start` does the same.
 
-- A normal 10-digit number needs **A2P 10DLC** registration: register your business as a "brand", then a "campaign" that says what you send (appointment texts) and how clients agree to it, then link the number to the campaign. Both Telnyx and Twilio have this in their portal.
-- A toll-free number (800, 888, ...) needs **toll-free verification** instead.
+## Using it
 
-The booking page shows the consent line carriers ask for: "We'll text you about this booking. Reply STOP to opt out."
+**Staff login.** After 5 wrong passwords, that address must wait 5 minutes. To end every login at once, change `STAFF_PASSWORD` or `SESSION_SECRET`.
 
-**How it works**
+**Booking page.** Clients book at `/book`. They pick services, a barber, and a time. Each booking gets a private link (`/book/manage/...`) where the client can see it, cancel it, or add it to Google Calendar or iPhone Calendar.
 
-- Every webhook is checked: Telnyx with an Ed25519 signature (and not older than 5 minutes), Twilio with its HMAC signature. The server answers the webhook at once and runs the assistant after.
-- One thread per phone number. The number a text comes from is the client. Tolly never asks for it and can only see, move or cancel bookings of that number.
-- STOP (also STOPALL, UNSUBSCRIBE, CANCEL, END, QUIT) turns texts off for that number. START or UNSTOP turns them on again. HELP is answered by the provider.
-- Each text we send is saved as "sent" or "failed" with the reason. The Inbox shows failed texts.
+**Inbox.** All texts and web chats. "Take over" stops the assistant in that chat. "Hand back to AI" starts it again. Staff notes are for staff only.
 
-## Settings
+**Assistant.** The barber's private chat with Tolly, at `/assistant`. Clients never see it.
 
-Copy `.env.example` to `.env` and fill in what you need. Never put secrets in the code.
+**Automations.** Routines that run by themselves: every day at a set time, before or after a visit, or when a booking is made, paid, moved, or cancelled. A routine sends a text to the client, or gives Tolly a task. Links in these texts need `PUBLIC_URL`.
 
-## Checks
+**Reports.** "Bookings" shows what was on the calendar. "Income & taxes" shows the money really taken, by month, by barber, and by payment method, with tips and refunds. Download it as CSV, or print it as a PDF.
+
+**Calendar feed.** In Settings, each barber gets a link to subscribe to their bookings in their phone's calendar. The feed has client names, so keep the link private. "Reset" makes a new link and the old one stops working.
+
+**Settings.** Shop name, time zone, address, opening hours, how often times start, the minimum notice, how many days ahead clients can book, pre-pay, and the assistant's name.
+
+**On an iPhone.** Open the dashboard in Safari. Use Share -> "Add to Home Screen" to open it like an app.
+
+## Privacy rules
+
+- With a client, Tolly shares only that client's own bookings. It never shares anyone else's schedule or details.
+- In the web chat nobody checks the phone number. So Tolly cannot look up, move, or cancel a booking there. It sends the client to the manage link.
+- Clients never see staff notes or the barber's private chat.
+- Private links use long random tokens. A wrong token gets a plain "not found".
+- Logs never hold a full phone number, a message, or a token.
+- The web chat takes 20 messages a minute from one address.
+
+`src/server/privacy.test.ts` tries to break each of these rules.
+
+## Tests
 
 ```bash
 pnpm typecheck
+```
+
+```bash
 pnpm test
+```
+
+```bash
 pnpm build
 ```
 
-Tests use an in-memory database. They do not need the network.
+Tests use an in-memory database, a fake Stripe, a fake SMS provider, and a mock AI model. They do not need the network or any keys.
 
 ## Tech
 
+- Node.js 22+, pnpm, TypeScript.
 - Server: Hono + @hono/zod-openapi on Node. The OpenAPI document is at `/api/openapi.json`.
 - Database: Postgres through `pg`, or embedded PGlite when `DATABASE_URL` is empty.
-- Web: Preact + Vite + Tailwind + shadcn/ui.
+- Web: Preact + Vite + Tailwind + shadcn/ui. Two pages: the dashboard (`index.html`) and the booking page (`book.html`).
+- AI: Vercel AI SDK with tools.
 
 ## License
 

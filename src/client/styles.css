@@ -86,3 +86,13 @@
     font-family: "Inter", system-ui, -apple-system, sans-serif;
   }
 }
+
+/* iPhone: Safari zooms the page when a focused field has text smaller than
+   16px. Not in a layer, so it wins over the utility classes. */
+@media (max-width: 767px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}

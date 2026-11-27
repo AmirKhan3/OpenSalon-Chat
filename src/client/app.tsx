@@ -112,7 +112,7 @@ function Shell({ onLogout }: { onLogout?: () => void }) {
 
   return (
     <AppContext.Provider value={appState}>
-      <div className="flex h-dvh flex-col overflow-hidden md:flex-row print:block print:h-auto print:overflow-visible">
+      <div className="flex h-dvh flex-col overflow-hidden pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] md:flex-row print:block print:h-auto print:overflow-visible">
         <Sidebar currentView={view} onLogout={onLogout} />
         <main className="min-h-0 min-w-0 flex-1 overflow-auto bg-background print:overflow-visible">
           {appState.loading ? (
