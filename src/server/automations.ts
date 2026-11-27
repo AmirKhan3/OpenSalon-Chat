@@ -210,6 +210,11 @@ function savedMoment(text: string | null, timezone: string): number {
   return Number.isNaN(date.getTime()) ? -Infinity : localSeconds(date, timezone);
 }
 
+/** When the visit got its current date and time: when it was made, or last moved. */
+function settledAt(apt: { created_at: string | null; moved_at: string | null }, timezone: string): number {
+  return Math.max(savedMoment(apt.created_at, timezone), savedMoment(apt.moved_at, timezone));
+}
+
 function niceTime(time: string): string {
   const [h, m] = time.split(":").map(Number);
   return `${h % 12 || 12}:${String(m || 0).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
@@ -226,12 +231,12 @@ const dayName = (date: string): string =>
 interface Apt {
   id: number; identifier: string; client_id: number | null; staff_id: number | null; status: string; scheduled_date: string;
   start_time: string; end_time: string; total_price: number; source: string; public_token: string | null; prepay_amount: number | null;
-  prepay_status: string | null; stripe_checkout_url: string | null; created_at: string | null;
+  prepay_status: string | null; stripe_checkout_url: string | null; created_at: string | null; moved_at: string | null;
   client_name: string | null; client_phone: string | null; barber: string | null;
 }
 
 const APT_SELECT = `SELECT a.id, a.identifier, a.client_id, a.staff_id, a.status, a.scheduled_date, a.start_time, a.end_time, a.total_price,
-  a.source, a.public_token, a.prepay_amount, a.prepay_status, a.stripe_checkout_url, a.created_at,
+  a.source, a.public_token, a.prepay_amount, a.prepay_status, a.stripe_checkout_url, a.created_at, a.moved_at,
   cl.name AS client_name, cl.phone AS client_phone, s.name AS barber
   FROM appointments a LEFT JOIN clients cl ON cl.id = a.client_id LEFT JOIN staff s ON s.id = a.staff_id`;
 
@@ -348,7 +353,10 @@ async function sendText(runId: number, template: string, apt: Apt, settings: Sho
   if (!phone) return finish(runId, "skipped", "The client has no mobile number.");
   if (await isOptedOut(phone)) return finish(runId, "skipped", "The client opted out of texts.");
   if (!getSmsProvider()) return finish(runId, "skipped", "Texts are not set up.");
-  const body = render(template, await valuesFor(apt, settings));
+  const values = await valuesFor(apt, settings);
+  // A text that points to the pay page is useless without the link.
+  if (/\{prepay_link\}/.test(template) && !values.prepay_link) return finish(runId, "skipped", "There is no pre-pay link for this booking.");
+  const body = render(template, values);
   if (!body) return finish(runId, "skipped", "The text was empty.");
   const thread = await smsThreadForPhone(phone);
   if (!thread) return finish(runId, "skipped", "The client has no mobile number.");
@@ -416,7 +424,7 @@ async function runDaily(row: Row, settings: ShopSettings, now: number): Promise<
     // A visit that already started needs no "see you today".
     if (at(apt.scheduled_date, apt.start_time) <= now) continue;
     // Booked after the routine's moment: it gets no text for it.
-    if (savedMoment(apt.created_at, settings.timezone) > moment) continue;
+    if (settledAt(apt, settings.timezone) > moment) continue;
     if (!(await matches(filters, apt, true))) continue;
     await act(row, apt, `a${row.id}:apt${apt.id}:${today}`, settings);
   }
@@ -440,8 +448,8 @@ async function runAround(row: Row, settings: ShopSettings, now: number): Promise
     if (armed > moment) continue;
     if (before) {
       if (now > start - QUIET_BEFORE_START) continue;
-      // Booked less than the lead time before the visit: the moment was before the booking.
-      if (savedMoment(apt.created_at, settings.timezone) > moment) continue;
+      // Booked or moved less than the lead time before the visit: the moment was already past.
+      if (settledAt(apt, settings.timezone) > moment) continue;
     }
     // Check the filters first: a visit marked "completed" a little late still gets its text.
     if (!(await matches(filters, apt, true))) continue;

@@ -4,7 +4,7 @@ import { nextIdentifier } from "./booking.js";
 import { toMinutes } from "./scheduling.js";
 import { getSettings } from "./settings.js";
 import { candidateStarts, isFree, loadDay, pickBarber } from "./availability.js";
-import { minutesToTime, shopNow, timeToMinutes } from "./shoptime.js";
+import { minutesToTime, shopNow, timeToMinutes, utcStamp } from "./shoptime.js";
 import { emitBookingEvent } from "./events.js";
 import { holdEnd, prepayFor, releaseExpiredHolds, settlePrepayOnCancel, startCheckout } from "./prepay.js";
 
@@ -366,8 +366,8 @@ export async function moveBooking(row: BookingRow, date: string, time: string, h
   if (barber === null) return { ok: false, status: 409, error: TAKEN };
 
   await run(
-    "UPDATE appointments SET scheduled_date = ?, start_time = ?, end_time = ?, staff_id = ?, updated_at = utc_now() WHERE id = ?",
-    [date, minutesToTime(start), minutesToTime(end), barber, row.id],
+    "UPDATE appointments SET scheduled_date = ?, start_time = ?, end_time = ?, staff_id = ?, moved_at = ?, updated_at = utc_now() WHERE id = ?",
+    [date, minutesToTime(start), minutesToTime(end), barber, utcStamp(), row.id],
   );
   await note(row.id, `Moved ${how} by the client, from ${row.scheduled_date} ${row.start_time} to ${date} ${minutesToTime(start)}.`);
   await emitBookingEvent("booking_moved", row.id);

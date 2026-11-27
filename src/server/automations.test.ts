@@ -644,3 +644,26 @@ test("deleting an automation removes its history, and deleting a visit keeps the
   await call("DELETE", `/api/automations/${routine.id}`);
   assert.equal((await db.query("SELECT id FROM automation_runs")).length, 0);
 });
+
+test("a visit moved to a nearer time gets no reminder for a moment that already passed", async () => {
+  await allOff();
+  await make({ trigger: "before_appointment", trigger_config: { minutes: 60 } });
+  const id = await visit({ date: MON, start: "16:00", end: "16:30" });
+  clock(MON, "14:50");
+  // The dashboard moves it to 15:30. The one-hour moment (14:30) is already past.
+  const moved = await call("PUT", `/api/appointments/${id}`, { start_time: "15:30" });
+  assert.equal(moved.status, 200, JSON.stringify(moved.body));
+  await auto.tick();
+  assert.equal(sent.length, 0);
+});
+
+test("a text that needs the pay link is skipped when there is no link", async () => {
+  await allOff();
+  const routine = await make({ trigger: "booking_created", action_config: { message: "Pay here to confirm: {prepay_link}" }, filters: { statuses: ["pending", "booked"] } });
+  const id = await visit({ date: TUE });
+  await auto.fireEvent("booking_created", id);
+  assert.equal(sent.length, 0);
+  const runs = await runsOf(routine.id);
+  assert.equal(runs.length, 1);
+  assert.equal(runs[0].status, "skipped");
+});

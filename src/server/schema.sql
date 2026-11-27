@@ -145,6 +145,8 @@ CREATE INDEX IF NOT EXISTS idx_services_category ON services(category);
 ALTER TABLE appointments ADD COLUMN IF NOT EXISTS prepay_amount DOUBLE PRECISION NOT NULL DEFAULT 0;
 ALTER TABLE appointments ADD COLUMN IF NOT EXISTS prepay_status TEXT NOT NULL DEFAULT 'none';
 ALTER TABLE appointments ADD COLUMN IF NOT EXISTS hold_expires_at TEXT;
+-- When the visit last got a new date or time (UTC). Reminders never fire for a moment before it.
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS moved_at TEXT;
 ALTER TABLE appointments ADD COLUMN IF NOT EXISTS stripe_session_id TEXT;
 ALTER TABLE appointments ADD COLUMN IF NOT EXISTS stripe_checkout_url TEXT;
 ALTER TABLE appointments ADD COLUMN IF NOT EXISTS stripe_payment_intent TEXT;

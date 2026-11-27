@@ -10,6 +10,11 @@ export function setShopClock(fn?: () => Date): void {
 }
 
 /** The real moment now (UTC inside). Tests can move it with setShopClock. */
+/** Now, as the database saves times: "YYYY-MM-DD HH:MM:SS" in UTC. */
+export function utcStamp(): string {
+  return wallClock().toISOString().slice(0, 19).replace("T", " ");
+}
+
 export function wallClock(): Date {
   return clock();
 }

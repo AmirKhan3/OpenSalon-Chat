@@ -10,6 +10,7 @@ import { registerChatRoutes } from "./chat.js";
 import { registerSmsRoutes } from "./sms.js";
 import { registerAutomationRoutes } from "./automations.js";
 import { emitBookingEvent } from "./events.js";
+import { utcStamp } from "./shoptime.js";
 import { registerPublicRoutes } from "./public.js";
 import { registerStripeRoutes, settlePrepayOnStaffChange } from "./prepay.js";
 import { registerAuthRoutes, requireStaff } from "./auth.js";
@@ -589,6 +590,7 @@ app.openapi(updateAppointment, async (c) => {
   for (const [key, val] of Object.entries(body)) {
     if (val !== undefined) { sets.push(`${key} = ?`); params.push(val); }
   }
+  if (date !== existing.scheduled_date || startTime !== existing.start_time) { sets.push("moved_at = ?"); params.push(utcStamp()); }
   sets.push("updated_at = utc_now()");
   await run(`UPDATE appointments SET ${sets.join(", ")} WHERE id = ?`, [...params, id]);
   await settlePrepayOnStaffChange(id, existing.status, status);
