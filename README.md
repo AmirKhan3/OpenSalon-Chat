@@ -57,6 +57,7 @@ Open `http://localhost:5173`. The API runs on `http://localhost:8787`. The booki
 With no `DATABASE_URL`, Tolly uses an embedded Postgres (PGlite) and keeps its data in `./.data/pglite`.
 On first start it adds sample data: 3 barbers, 6 services, 3 clients. Set `SEED_DEMO_DATA=false` to turn that off.
 To try the inbox, also set `SEED_DEMO_CHATS=true`. It adds three example chats. Do not set it on a real shop.
+For a demo of a busy shop, also set `SEED_DEMO_BUSY=true`. It adds sample regulars, six weeks of past visits with payments, a full day today and bookings ahead. It runs once. Do not set it on a real shop.
 
 To run it the way a real server does:
 
