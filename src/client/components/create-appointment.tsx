@@ -6,6 +6,7 @@ import { api } from "../api";
 import { conflictsFrom, describeConflict, type Conflict } from "@/lib/conflicts";
 import { joinName, phoneLooksRight, splitName, tidyPhone } from "@/lib/client-name";
 import { today } from "@/lib/dates";
+import { barberChoice, soloBarber } from "@/lib/solo";
 
 interface Props {
   onClose: () => void;
@@ -39,7 +40,10 @@ export function CreateAppointment({ onClose, defaultDate, defaultClientId, defau
   /** True while a booking is on its way. A ref, so a fast second tap sees it at once. */
   const busy = useRef(false);
 
-  const [staffId, setStaffId] = useState(defaultStaffId ? String(defaultStaffId) : "");
+  const [pickedStaff, setStaffId] = useState(defaultStaffId ? String(defaultStaffId) : "");
+  // A one-barber shop never asks which barber.
+  const solo = soloBarber(staffLookup);
+  const staffId = barberChoice(staffLookup, pickedStaff);
   const [date, setDate] = useState(defaultDate || today());
   const [startTime, setStartTime] = useState(defaultStartTime || "09:00");
   const [selectedServices, setSelectedServices] = useState<number[]>([]);
@@ -141,7 +145,7 @@ export function CreateAppointment({ onClose, defaultDate, defaultClientId, defau
   };
 
   return (
-    <Popup opened onBackdropClick={onClose} className="z-50">
+    <Popup opened onBackdropClick={onClose} className="sheet-page z-50">
       <Page>
         <Navbar
           title="New booking"
@@ -206,7 +210,7 @@ export function CreateAppointment({ onClose, defaultDate, defaultClientId, defau
         </p>
 
         {twin && (
-          <div className="mx-4 mb-4 space-y-3 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm" role="alert">
+          <div className="mx-4 mb-4 space-y-3 rounded-2xl border border-warning-border bg-warning-soft p-4 text-sm" role="alert">
             <p className="font-medium">{twin.name} is already a customer.</p>
             <div className="flex gap-2">
               <Button small onClick={() => pick(twin)}>Use {splitName(twin.name).first}</Button>
@@ -217,16 +221,18 @@ export function CreateAppointment({ onClose, defaultDate, defaultClientId, defau
 
         <BlockTitle>When</BlockTitle>
         <List strong inset>
-          <ListInput
-            label="Barber"
-            type="select"
-            dropdown
-            value={staffId}
-            onChange={(e: Event) => { setStaffId(value(e)); setConflicts(null); }}
-          >
-            <option value="">Unassigned</option>
-            {staffLookup.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </ListInput>
+          {!solo && (
+            <ListInput
+              label="Barber"
+              type="select"
+              dropdown
+              value={staffId}
+              onChange={(e: Event) => { setStaffId(value(e)); setConflicts(null); }}
+            >
+              <option value="">Unassigned</option>
+              {staffLookup.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </ListInput>
+          )}
           <ListInput label="Date" type="date" value={date} onInput={(e: Event) => { setDate(value(e)); setConflicts(null); }} />
           <ListInput label="Start time" type="time" value={startTime} onInput={(e: Event) => { setStartTime(value(e)); setConflicts(null); }} />
         </List>
@@ -268,8 +274,8 @@ export function CreateAppointment({ onClose, defaultDate, defaultClientId, defau
         </List>
 
         {conflicts && (
-          <div className="mx-4 mb-4 flex gap-2.5 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm" role="alert">
-            <TriangleAlert className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" aria-hidden="true" />
+          <div className="mx-4 mb-4 flex gap-2.5 rounded-2xl border border-warning-border bg-warning-soft p-4 text-sm" role="alert">
+            <TriangleAlert className="mt-0.5 h-4 w-4 flex-shrink-0 text-warning" aria-hidden="true" />
             <div className="space-y-1">
               <p className="font-medium">{staffName} is not free then.</p>
               <ul className="text-muted-foreground">
@@ -286,9 +292,14 @@ export function CreateAppointment({ onClose, defaultDate, defaultClientId, defau
         )}
 
         <div className="space-y-2 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-          <Button large disabled={saving} onClick={() => handleSubmit()}>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => handleSubmit()}
+            className="glass-tint flex h-12 w-full items-center justify-center rounded-full text-base font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
+          >
             {saving ? "Booking..." : "Book"}
-          </Button>
+          </button>
           {conflicts && (
             <Button large tonal disabled={saving} onClick={() => handleSubmit(true)}>
               Book anyway

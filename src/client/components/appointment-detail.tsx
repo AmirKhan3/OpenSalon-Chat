@@ -10,6 +10,9 @@ import { StatusBadge } from "./status-badge";
 import { RescheduleAppointment } from "./reschedule-appointment";
 import { AppointmentPayments } from "./appointment-payments";
 import { conflictsFrom, conflictSentence } from "@/lib/conflicts";
+import { soloBarber } from "@/lib/solo";
+import { friendlyDate } from "@/lib/dates";
+import { formatRange } from "@/lib/calendar-slot";
 
 export function AppointmentDetail() {
   const {
@@ -43,15 +46,15 @@ export function AppointmentDetail() {
   };
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/appointments")}>
-          <ArrowLeft className="mr-1 h-4 w-4" /> Back
+    <div className="space-y-6 p-4 md:p-6">
+      <div className="flex min-h-11 items-center gap-2 md:gap-4">
+        <Button variant="ghost" size="sm" className="max-md:-ml-2 max-md:px-0" onClick={() => navigate("/appointments")}>
+          <ArrowLeft className="h-4 w-4 md:mr-1" aria-hidden="true" /> <span className="max-md:sr-only">Back</span>
         </Button>
-        <h1 className="flex-1 text-2xl font-bold">{apt.identifier}</h1>
+        <h1 className="min-w-0 flex-1 truncate text-[1.65rem] font-medium leading-tight tracking-tight">{apt.identifier}</h1>
         <StatusBadge status={apt.status} />
-        <Button variant="destructive" size="sm" onClick={() => deleteAppointment(apt.id)}>
-          <Trash2 className="mr-1 h-3.5 w-3.5" /> Delete
+        <Button variant="destructive" size="sm" className="max-md:px-0" onClick={() => deleteAppointment(apt.id)}>
+          <Trash2 className="h-4 w-4 md:mr-1 md:h-3.5 md:w-3.5" aria-hidden="true" /> <span className="max-md:sr-only">Delete</span>
         </Button>
       </div>
 
@@ -59,18 +62,18 @@ export function AppointmentDetail() {
         <div className="space-y-6 lg:col-span-2">
           <Card>
             <CardHeader>
-              <CardTitle>Booking Details</CardTitle>
+              <CardTitle>Booking details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1">
-                  <Label className="flex items-center gap-1.5 text-xs text-muted-foreground"><Clock className="h-3 w-3" /> Date & Time</Label>
-                  <p className="text-sm font-medium">{apt.scheduled_date} at {apt.start_time} - {apt.end_time}</p>
-                  <Button variant="outline" size="sm" className="px-2" onClick={() => setRescheduling(true)}>Reschedule</Button>
+                  <Label className="flex items-center gap-1.5 text-xs text-muted-foreground"><Clock className="h-3 w-3" /> Date and time</Label>
+                  <p className="text-sm font-medium">{friendlyDate(apt.scheduled_date)}, {formatRange(apt.start_time, apt.end_time)}</p>
+                  <Button variant="outline" size="sm" className="px-3" onClick={() => setRescheduling(true)}>Reschedule</Button>
                 </div>
                 <div className="space-y-1">
                   <Label className="flex items-center gap-1.5 text-xs text-muted-foreground"><User className="h-3 w-3" /> Client</Label>
-                  <button className="text-sm font-medium text-primary hover:underline" onClick={() => navigate(`/clients/${apt.client_id}`)}>
+                  <button className="flex min-h-11 items-center text-left text-sm font-medium text-primary hover:underline md:min-h-0" onClick={() => navigate(`/clients/${apt.client_id}`)}>
                     {apt.client_name}
                   </button>
                   {apt.client_phone && <p className="text-xs text-muted-foreground">{apt.client_phone}</p>}
@@ -78,29 +81,32 @@ export function AppointmentDetail() {
               </div>
               <Separator />
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Staff</Label>
-                  <select className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm" value={apt.staff_id || ""} onChange={(e) => handleStaffChange((e.target as HTMLSelectElement).value)}>
-                    <option value="">Unassigned</option>
-                    {staffLookup.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </select>
-                </div>
+                {/* A one-barber shop has nothing to choose once the booking is theirs. */}
+                {soloBarber(staffLookup)?.id !== apt.staff_id && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Staff</Label>
+                    <select className="flex h-11 w-full rounded-xl border border-input bg-card px-3 text-base md:h-9 md:text-sm" value={apt.staff_id || ""} onChange={(e) => handleStaffChange((e.target as HTMLSelectElement).value)}>
+                      <option value="">Unassigned</option>
+                      {staffLookup.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  </div>
+                )}
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground">Status</Label>
-                  <select className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm" value={apt.status} onChange={(e) => handleStatusChange((e.target as HTMLSelectElement).value)}>
+                  <select className="flex h-11 w-full rounded-xl border border-input bg-card px-3 text-base md:h-9 md:text-sm" value={apt.status} onChange={(e) => handleStatusChange((e.target as HTMLSelectElement).value)}>
                     {apt.status === "pending" && <option value="pending">Waiting for pre-pay</option>}
                     <option value="booked">Booked</option>
                     <option value="confirmed">Confirmed</option>
-                    <option value="in_progress">In Progress</option>
+                    <option value="in_progress">In progress</option>
                     <option value="completed">Completed</option>
                     <option value="cancelled">Cancelled</option>
-                    <option value="no_show">No Show</option>
+                    <option value="no_show">No show</option>
                   </select>
                 </div>
               </div>
               <div className="space-y-1">
                 <Label className="flex items-center gap-1.5 text-xs text-muted-foreground"><DollarSign className="h-3 w-3" /> Total</Label>
-                <p className="text-lg font-bold">${apt.total_price.toFixed(2)}</p>
+                <p className="text-lg font-medium">${apt.total_price.toFixed(2)}</p>
               </div>
               {apt.notes && (
                 <div className="space-y-1">
@@ -161,8 +167,8 @@ export function AppointmentDetail() {
                     <div key={note.id} className="rounded-md border bg-muted/30 p-2.5">
                       <p className="text-sm">{note.content}</p>
                       <div className="mt-1 flex items-center justify-between">
-                        <span className="text-[10px] text-muted-foreground">{new Date(note.created_at).toLocaleString()}</span>
-                        <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-destructive" onClick={() => deleteAppointmentNote(note.id)}>
+                        <span className="text-xs text-muted-foreground">{new Date(note.created_at).toLocaleString()}</span>
+                        <Button variant="ghost" aria-label="Delete this note" size="icon" className="h-5 w-5 text-muted-foreground hover:text-destructive" onClick={() => deleteAppointmentNote(note.id)}>
                           <Trash2 className="h-3 w-3" />
                         </Button>
                       </div>

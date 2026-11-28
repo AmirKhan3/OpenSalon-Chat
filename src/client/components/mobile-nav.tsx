@@ -1,62 +1,75 @@
-import { Badge, BlockTitle, Fab, List, ListItem, Tabbar, TabbarLink } from "konsta/react";
-import { BarChart3, Bot, CalendarDays, Clock, Ellipsis, Inbox as InboxIcon, LayoutDashboard, LogOut, Package, Plus, Settings, Sparkles, UserCog, Users, Zap } from "lucide-preact";
+import { BarChart3, Bot, CalendarDays, ChevronRight, Clock, Ellipsis, Inbox as InboxIcon, LayoutDashboard, LogOut, Package, Plus, Settings, Sparkles, UserCog, Users, Zap } from "lucide-preact";
 import { useApp } from "../context";
 import type { View } from "../types";
+import { cn } from "@/lib/utils";
+import { PHONE_TABS, tabFor, type TabKey } from "@/lib/phone-nav";
 import { useInboxCount } from "./sidebar";
 
+const TAB_ICONS: Record<TabKey, typeof Bot> = {
+  agent: Bot,
+  calendar: CalendarDays,
+  inbox: InboxIcon,
+  clients: Users,
+  more: Ellipsis,
+};
+
 /** The screens that live behind the "More" tab on phones. */
-const MORE_ITEMS: { view: View; path: string; label: string; icon: typeof Bot }[] = [
-  { view: "assistant", path: "/assistant", label: "Assistant", icon: Bot },
-  { view: "automations", path: "/automations", label: "Automations", icon: Zap },
-  { view: "appointments", path: "/appointments", label: "Appointments", icon: Clock },
-  { view: "staff", path: "/staff", label: "Staff", icon: UserCog },
-  { view: "services", path: "/services", label: "Services", icon: Sparkles },
-  { view: "products", path: "/products", label: "Products", icon: Package },
-  { view: "reports", path: "/reports", label: "Reports", icon: BarChart3 },
-  { view: "settings", path: "/settings", label: "Settings", icon: Settings },
+const MORE_ITEMS: { view: View; path: string; label: string; about: string; icon: typeof Bot }[] = [
+  { view: "dashboard", path: "/dashboard", label: "Today", about: "Today's bookings and numbers", icon: LayoutDashboard },
+  { view: "automations", path: "/automations", label: "Automations", about: "Texts that send themselves", icon: Zap },
+  { view: "appointments", path: "/appointments", label: "Appointments", about: "Every booking, past and next", icon: Clock },
+  { view: "staff", path: "/staff", label: "Staff", about: "Barbers and their hours", icon: UserCog },
+  { view: "services", path: "/services", label: "Services", about: "What you offer, prices and times", icon: Sparkles },
+  { view: "products", path: "/products", label: "Products", about: "Stock you sell in the shop", icon: Package },
+  { view: "reports", path: "/reports", label: "Reports", about: "Income, taxes and progress", icon: BarChart3 },
+  { view: "settings", path: "/settings", label: "Settings", about: "Shop, texts and payments", icon: Settings },
 ];
 
-/** True when the "More" tab is the right one to light up for this screen. */
-export function isMoreView(view: View): boolean {
-  return view === "more" || MORE_ITEMS.some((item) => item.view === view);
-}
-
-/** The tab bar at the bottom of the screen on phones. */
-export function MobileNav({ currentView }: { currentView: View }) {
+/** The floating bar at the bottom of the screen on phones. `screen` is the screen now showing. */
+export function MobileNav({ screen }: { screen: View }) {
   const { navigate } = useApp();
   const inbox = useInboxCount();
-
-  const tabs: { key: string; path: string; label: string; icon: typeof Bot; active: boolean; badge?: number }[] = [
-    { key: "today", path: "/", label: "Today", icon: LayoutDashboard, active: currentView === "dashboard" },
-    { key: "calendar", path: "/calendar", label: "Calendar", icon: CalendarDays, active: currentView === "calendar" },
-    { key: "inbox", path: "/inbox", label: "Inbox", icon: InboxIcon, active: currentView === "inbox", badge: inbox.waiting },
-    { key: "clients", path: "/clients", label: "Clients", icon: Users, active: currentView === "clients" },
-    { key: "more", path: "/more", label: "More", icon: Ellipsis, active: isMoreView(currentView) },
-  ];
+  const active = tabFor(screen);
 
   return (
-    <nav aria-label="Main navigation" className="md:hidden print:hidden">
-      <Tabbar labels icons className="fixed bottom-0 left-0">
-        {tabs.map((tab) => (
-          <TabbarLink
-            key={tab.key}
-            active={tab.active}
-            label={tab.label}
-            linkProps={{ "aria-current": tab.active ? "page" : undefined }}
-            icon={
-              <span className="relative">
-                <tab.icon className="h-6 w-6" aria-hidden="true" />
-                {!!tab.badge && (
-                  <Badge small colors={{ bg: inbox.needsYou ? "bg-red-500" : "bg-primary" }} className="absolute -right-2.5 -top-1">
-                    {tab.badge}
-                  </Badge>
-                )}
-              </span>
-            }
-            onClick={() => navigate(tab.path)}
-          />
-        ))}
-      </Tabbar>
+    <nav
+      aria-label="Main navigation"
+      className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] z-30 flex justify-center md:hidden print:hidden"
+    >
+      <div className="pointer-events-auto flex gap-1 rounded-full glass p-1.5">
+        {PHONE_TABS.map((tab) => {
+          const Icon = TAB_ICONS[tab.key];
+          const on = tab.key === active;
+          const badge = tab.key === "inbox" ? inbox.waiting : 0;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              title={tab.label}
+              aria-label={badge ? `${tab.label}, ${badge} waiting` : tab.label}
+              aria-current={on ? "page" : undefined}
+              onClick={() => navigate(tab.path)}
+              className={cn(
+                "relative flex h-12 w-[3.4rem] items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                on ? "bg-card/80 text-foreground shadow-chip" : "text-muted-foreground active:bg-press",
+              )}
+            >
+              <Icon className="h-6 w-6" strokeWidth={on ? 2.25 : 1.75} aria-hidden="true" />
+              {badge > 0 && (
+                <span
+                  className={cn(
+                    "absolute right-1.5 top-1 flex h-[1.15rem] min-w-[1.15rem] items-center justify-center rounded-full px-1 text-[11px] font-semibold leading-none text-primary-foreground",
+                    inbox.needsYou ? "bg-danger" : "bg-primary",
+                  )}
+                  aria-hidden="true"
+                >
+                  {badge > 99 ? "99+" : badge}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
     </nav>
   );
 }
@@ -65,47 +78,47 @@ export function MobileNav({ currentView }: { currentView: View }) {
 export function MoreMenu({ onLogout }: { onLogout?: () => void }) {
   const { navigate, stats } = useApp();
   return (
-    <div className="mx-auto max-w-xl pb-4">
-      <h1 className="px-4 pt-6 text-2xl font-bold">More</h1>
-      <BlockTitle>Your shop</BlockTitle>
-      <List strong inset>
+    <div className="mx-auto max-w-xl p-4">
+      <h1 className="flex min-h-11 items-center text-[1.65rem] font-medium leading-tight tracking-tight">Your shop</h1>
+      <ul className="mt-3 divide-y divide-border overflow-hidden rounded-[1.25rem] border border-hairline bg-card shadow-soft">
         {MORE_ITEMS.map((item) => (
-          <ListItem
-            key={item.view}
-            link
-            title={item.label}
-            media={<item.icon className="h-5 w-5 text-primary" aria-hidden="true" />}
-            after={item.view === "products" && stats.low_stock_products > 0 ? `${stats.low_stock_products} low` : undefined}
-            onClick={() => navigate(item.path)}
-          />
+          <li key={item.view}>
+            <button type="button" onClick={() => navigate(item.path)} className="flex min-h-16 w-full items-center gap-3.5 px-4 py-3 text-left active:bg-muted">
+              <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-muted">
+                <item.icon className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-medium leading-tight">{item.label}</span>
+                <span className="block text-sm text-muted-foreground">{item.about}</span>
+              </span>
+              {item.view === "products" && stats.low_stock_products > 0 && (
+                <span className="rounded-full bg-warning-soft px-2 py-0.5 text-xs font-medium text-warning-foreground">{stats.low_stock_products} low</span>
+              )}
+              <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground/60" aria-hidden="true" />
+            </button>
+          </li>
         ))}
-      </List>
+      </ul>
       {onLogout && (
-        <List strong inset>
-          <ListItem
-            link
-            chevron={false}
-            title="Log out"
-            media={<LogOut className="h-5 w-5 text-muted-foreground" aria-hidden="true" />}
-            onClick={onLogout}
-          />
-        </List>
+        <button type="button" onClick={onLogout} className="mt-4 flex min-h-14 w-full items-center gap-3.5 rounded-[1.25rem] border border-hairline bg-card px-4 text-left text-muted-foreground shadow-soft active:bg-muted">
+          <LogOut className="ml-2.5 mr-2.5 h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
+          <span className="font-medium">Log out</span>
+        </button>
       )}
     </div>
   );
 }
 
-/** The round "Book" button above the tab bar on phones. */
+/** The round "Book" button above the bottom bar on phones. */
 export function BookFab({ onClick }: { onClick: () => void }) {
   return (
-    <div className="md:hidden print:hidden">
-      <Fab
-        className="fixed bottom-[calc(env(safe-area-inset-bottom)+4.75rem)] right-4 z-20"
-        icon={<Plus className="h-6 w-6" aria-hidden="true" />}
-        text="Book"
-        textPosition="after"
-        onClick={onClick}
-      />
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      className="fixed bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] right-4 z-20 flex h-12 items-center gap-1.5 rounded-full glass-tint pl-4 pr-5 font-medium md:hidden print:hidden"
+    >
+      <Plus className="h-5 w-5" aria-hidden="true" />
+      Book
+    </button>
   );
 }

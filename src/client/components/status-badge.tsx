@@ -4,10 +4,10 @@ const STATUS_CONFIG: Record<string, { label: string; variant: "default" | "secon
   pending: { label: "Waiting for pre-pay", variant: "outline" },
   booked: { label: "Booked", variant: "default" },
   confirmed: { label: "Confirmed", variant: "secondary" },
-  in_progress: { label: "In Progress", variant: "outline" },
+  in_progress: { label: "In progress", variant: "outline" },
   completed: { label: "Completed", variant: "secondary" },
   cancelled: { label: "Cancelled", variant: "destructive" },
-  no_show: { label: "No Show", variant: "destructive" },
+  no_show: { label: "No show", variant: "destructive" },
 };
 
 export function StatusBadge({ status }: { status: string }) {

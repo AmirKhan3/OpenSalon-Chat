@@ -449,3 +449,237 @@ test("Tolly finds clients and the chats that wait for the barber", async () => {
   assert.equal(waiting.length, 1);
   assert.deepEqual([waiting[0].name, waiting[0].channel, waiting[0].unread, waiting[0].last_message], ["Sam Lee", "text", 1, "Can I bring my kid?"]);
 });
+
+// ── Setting up and changing the shop from the chat ─────────────────
+
+test("Tolly books a visit for the shop, and refuses a busy time", async () => {
+  await db.run("UPDATE staff SET active = 0 WHERE id = 2");
+  const made = await use("create_appointment", { client_id: 1, date: TUE, time: "10:00", service_ids: [1, 2], notes: "Likes it short" });
+  assert.equal(made.ok, true);
+  assert.deepEqual([made.client, made.time, made.barber, made.services, made.price], ["Jamie Rivera", "10:00-10:45", "Marcus", "Haircut, Beard Trim", "$50.00"]);
+  assert.equal(made.warning, undefined);
+  const row = await db.get<any>("SELECT * FROM appointments WHERE identifier = ?", [made.reference]);
+  assert.deepEqual([row.client_id, row.staff_id, row.scheduled_date, row.start_time, row.end_time, row.total_price, row.status, row.notes],
+    [1, 1, TUE, "10:00", "10:45", 50, "booked", "Likes it short"]);
+  assert.equal((await db.query("SELECT 1 FROM appointment_services WHERE appointment_id = ?", [row.id])).length, 2);
+
+  // The same time is taken now.
+  const busy = await use("create_appointment", { client_id: 2, date: TUE, time: "10:30", service_ids: [1] });
+  assert.match(busy.error, /Marcus is busy then/);
+  assert.equal(busy.busy.length, 1);
+  assert.equal((await db.query("SELECT 1 FROM appointments")).length, 1);
+
+  assert.match((await use("create_appointment", { client_id: 99, date: TUE, time: "12:00", service_ids: [1] })).error, /no client/);
+  assert.match((await use("create_appointment", { client_id: 1, date: "2026-02-30", time: "12:00", service_ids: [1] })).error, /real date/);
+  assert.match((await use("create_appointment", { client_id: 1, date: TUE, time: "noon", service_ids: [1] })).error, /HH:MM/);
+  assert.match((await use("create_appointment", { client_id: 1, date: TUE, time: "12:00", service_ids: [1, 99] })).error, /not offered/);
+  assert.match((await use("create_appointment", { client_id: 1, date: TUE, time: "23:45", service_ids: [1] })).error, /after midnight/);
+  assert.match((await use("create_appointment", { client_id: 1, date: TUE, time: "12:00", service_ids: [1], staff_id: 2 })).error, /no barber/);
+  // The same service twice counts once.
+  const once = await use("create_appointment", { client_id: 2, date: TUE, time: "13:00", service_ids: [2, 2] });
+  assert.deepEqual([once.services, once.price, once.time], ["Beard Trim", "$15.00", "13:00-13:15"]);
+  // A time before now still books, with a warning.
+  assert.match((await use("create_appointment", { client_id: 1, date: MON, time: "08:00", service_ids: [1] })).warning, /in the past/);
+});
+
+test("with two barbers, Tolly asks which one", async () => {
+  await db.run("UPDATE staff SET active = 0");
+  assert.match((await use("create_appointment", { client_id: 1, date: TUE, time: "10:00", service_ids: [1] })).error, /No barber is on/);
+  await db.run("UPDATE staff SET active = 1");
+  assert.match((await use("create_appointment", { client_id: 1, date: TUE, time: "10:00", service_ids: [1] })).error, /which barber/);
+  const made = await use("create_appointment", { client_id: 1, date: TUE, time: "10:00", service_ids: [1], staff_id: 2 });
+  assert.equal(made.barber, "Dre");
+  // Marcus is still free at that time.
+  assert.equal((await use("create_appointment", { client_id: 2, date: TUE, time: "10:00", service_ids: [1], staff_id: 1 })).ok, true);
+});
+
+test("Tolly lists bookings between two dates", async () => {
+  await visit({ date: MON, start: "09:00", end: "09:30", status: "completed" });
+  await visit({ date: TUE, client: 2, staff: 2 });
+  await visit({ date: "2026-03-10" });
+  const all = (await use("list_appointments", { from: MON, to: TUE })).bookings;
+  assert.deepEqual(all.map((b: any) => [b.date, b.client, b.barber, b.services, b.status]),
+    [[MON, "Jamie Rivera", "Marcus", "Haircut", "completed"], [TUE, "Sam Lee", "Dre", "Haircut", "booked"]]);
+  assert.equal((await use("list_appointments", { from: MON, to: "2026-03-31", client_id: 1 })).bookings.length, 2);
+  assert.equal((await use("list_appointments", { from: MON, to: "2026-03-31", status: "Completed" })).bookings.length, 1);
+  assert.match((await use("list_appointments", { from: TUE, to: MON })).error, /before the start/);
+  assert.match((await use("list_appointments", { from: "soon", to: MON })).error, /real dates/);
+});
+
+test("Tolly deletes a booking, but not one with money on it", async () => {
+  const plain = await visit();
+  const paid = await visit({ start: "15:00", end: "15:30" });
+  const prepaid = await visit({ start: "16:00", end: "16:30" });
+  await db.run("INSERT INTO payments (appointment_id, client_id, amount, paid_on) VALUES (?, 1, 35, ?)", [paid, TUE]);
+  await db.run("UPDATE appointments SET prepay_status = 'paid' WHERE id = ?", [prepaid]);
+  const ref = async (id: number) => (await db.get<{ identifier: string }>("SELECT identifier FROM appointments WHERE id = ?", [id]))!.identifier;
+
+  assert.match((await use("delete_appointment", { reference: await ref(paid) })).error, /Cancel it instead/);
+  assert.match((await use("delete_appointment", { reference: await ref(prepaid) })).error, /Cancel it instead/);
+  const gone = await use("delete_appointment", { reference: await ref(plain) });
+  assert.equal(gone.ok, true);
+  assert.equal(gone.client, "Jamie Rivera");
+  assert.deepEqual((await db.query<{ id: number }>("SELECT id FROM appointments ORDER BY id")).map((r) => r.id), [paid, prepaid]);
+  assert.ok((await use("delete_appointment", { reference: "NOPE-1" })).error);
+  // A finished visit stays, even with no payment recorded.
+  const done = await visit({ start: "17:00", end: "17:30", status: "completed" });
+  assert.match((await use("delete_appointment", { reference: await ref(done) })).error, /stays in the records/);
+});
+
+test("Tolly adds, changes and deletes clients", async () => {
+  const made = await use("add_client", { name: "Alex Kim", phone: "555 555 0142", notes: "Referred by Sam" });
+  assert.equal(made.ok, true);
+  assert.equal(made.phone, "+15555550142");
+  assert.equal((await db.get<any>("SELECT notes FROM clients WHERE id = ?", [made.client_id])).notes, "Referred by Sam");
+  // Nobody is added twice, however the number is written.
+  const twice = await use("add_client", { name: "Jamie R", phone: "+1 555-555-0101" });
+  assert.match(twice.error, /Jamie Rivera already has this phone number/);
+  assert.match((await use("add_client", { name: "Bad", phone: "12345" })).error, /not a phone number/);
+  assert.equal((await use("add_client", { name: "No Phone" })).ok, true);
+
+  const changed = await use("update_client", { client_id: made.client_id, name: "Alex Kim Jr", email: "alex@example.com" });
+  assert.deepEqual([changed.name, changed.phone, changed.email], ["Alex Kim Jr", "+15555550142", "alex@example.com"]);
+  assert.equal((await use("update_client", { client_id: made.client_id, phone: "" })).phone, "");
+  assert.match((await use("update_client", { client_id: made.client_id })).error, /Nothing to change/);
+  assert.match((await use("update_client", { client_id: 999, name: "X" })).error, /no client/);
+  assert.match((await use("update_client", { client_id: 1, phone: "abc" })).error, /not a phone number/);
+  // Two clients never share a number. Keeping your own number is fine.
+  assert.match((await use("update_client", { client_id: 2, phone: "555-555-0101" })).error, /Jamie Rivera already has this phone number/);
+  assert.equal((await use("update_client", { client_id: 2, phone: "+15555550199", name: "Sam L" })).ok, true);
+
+  // A client with bookings stays, so no history is lost.
+  await visit({ client: 1 });
+  assert.match((await use("delete_client", { client_id: 1 })).error, /has 1 booking\./);
+  assert.equal((await db.query("SELECT 1 FROM appointments")).length, 1);
+  assert.deepEqual(await use("delete_client", { client_id: made.client_id }), { ok: true, deleted: "Alex Kim Jr" });
+  assert.match((await use("delete_client", { client_id: made.client_id })).error, /no client/);
+});
+
+test("Tolly adds, changes and deletes barbers, and keeps one on", async () => {
+  const list = (await use("list_staff", {})).staff;
+  assert.deepEqual(list.map((s: any) => [s.name, s.on]), [["Dre", true], ["Marcus", true]]);
+
+  const made = await use("create_staff", { name: "Tasha", title: "Barber", phone: "(555) 555-0177" });
+  assert.equal(made.ok, true);
+  const row = await db.get<any>("SELECT * FROM staff WHERE id = ?", [made.staff_id]);
+  assert.deepEqual([row.name, row.title, row.phone, row.color, row.active], ["Tasha", "Barber", "+15555550177", "#3a4a5c", 1]);
+
+  const off = await use("update_staff", { staff_id: made.staff_id, on: false, title: "Senior Barber" });
+  assert.deepEqual([off.name, off.on], ["Tasha", false]);
+  assert.equal((await use("update_staff", { staff_id: 2, on: false })).on, false);
+  // Marcus is the last one on.
+  assert.match((await use("update_staff", { staff_id: 1, on: false })).error, /only barber who is on/);
+  assert.equal((await db.get<any>("SELECT active FROM staff WHERE id = 1")).active, 1);
+  assert.match((await use("update_staff", { staff_id: 999, name: "X" })).error, /no barber/);
+  assert.match((await use("update_staff", { staff_id: 1 })).error, /Nothing to change/);
+
+  await visit({ staff: 2 });
+  assert.match((await use("delete_staff", { staff_id: 2 })).error, /has bookings/);
+  assert.deepEqual(await use("delete_staff", { staff_id: made.staff_id }), { ok: true, deleted: "Tasha" });
+  assert.match((await use("delete_staff", { staff_id: 1 })).error, /at least one barber/);
+  assert.match((await use("delete_staff", { staff_id: 999 })).error, /no barber/);
+  assert.equal((await db.query("SELECT 1 FROM staff")).length, 2);
+});
+
+test("Tolly adds, changes and removes services", async () => {
+  const made = await use("create_service", { name: "Line Up", minutes: 15, price: 12.5, category: "Cuts" });
+  assert.deepEqual([made.ok, made.minutes, made.price], [true, 15, "$12.50"]);
+  const all = (await use("list_services", {})).services;
+  assert.equal(all.length, 3);
+  assert.ok(all.every((s: any) => s.on));
+
+  const changed = await use("update_service", { service_id: 1, price: 40, minutes: 45, on: false });
+  assert.deepEqual([changed.name, changed.price, changed.minutes, changed.on], ["Haircut", "$40.00", 45, false]);
+  assert.equal((await use("list_services", {})).services.find((s: any) => s.id === 1).on, false);
+  // A service that is off cannot be booked.
+  assert.match((await use("create_appointment", { client_id: 1, date: TUE, time: "10:00", service_ids: [1], staff_id: 1 })).error, /not offered/);
+  assert.match((await use("update_service", { service_id: 999, price: 1 })).error, /no service/);
+  assert.match((await use("update_service", { service_id: 1 })).error, /Nothing to change/);
+
+  // A service with bookings is turned off, so past visits keep it.
+  await visit({ service: 2 });
+  const kept = await use("delete_service", { service_id: 2 });
+  assert.equal(kept.turned_off, "Beard Trim");
+  assert.equal((await db.get<any>("SELECT active FROM services WHERE id = 2")).active, 0);
+  assert.equal((await db.query("SELECT 1 FROM appointment_services WHERE service_id = 2")).length, 1);
+  assert.deepEqual(await use("delete_service", { service_id: made.service_id }), { ok: true, deleted: "Line Up" });
+  assert.match((await use("delete_service", { service_id: made.service_id })).error, /no service/);
+});
+
+test("Tolly adds, changes and deletes products, and counts stock", async () => {
+  const made = await use("create_product", { name: "Matte Clay", brand: "Layrite", price: 18, cost: 9, stock: 6 });
+  assert.deepEqual([made.ok, made.price, made.stock], [true, "$18.00", 6]);
+  await use("create_product", { name: "Beard Oil", price: 14, stock: 20 });
+
+  assert.equal((await use("list_products", {})).products.length, 2);
+  const found = (await use("list_products", { search: "layr" })).products;
+  assert.deepEqual([found.length, found[0].name, found[0].low], [1, "Matte Clay", false]);
+  assert.deepEqual((await use("list_products", { search: "%" })).products, []);
+
+  const sold = await use("update_product", { product_id: made.product_id, stock_change: -2 });
+  assert.deepEqual([sold.stock, sold.low], [4, true]);
+  assert.deepEqual((await use("list_products", { low_stock_only: true })).products.map((p: any) => p.name), ["Matte Clay"]);
+  assert.match((await use("update_product", { product_id: made.product_id, stock_change: -9 })).error, /only 4 in stock/);
+  assert.match((await use("update_product", { product_id: made.product_id, stock: 3, stock_change: 1 })).error, /not both/);
+  const set = await use("update_product", { product_id: made.product_id, stock: 12, price: 20 });
+  assert.deepEqual([set.stock, set.price, set.low], [12, "$20.00", false]);
+  assert.match((await use("update_product", { product_id: made.product_id })).error, /Nothing to change/);
+  assert.match((await use("update_product", { product_id: 999, price: 1 })).error, /no product/);
+
+  assert.deepEqual(await use("delete_product", { product_id: made.product_id }), { ok: true, deleted: "Matte Clay" });
+  assert.match((await use("delete_product", { product_id: made.product_id })).error, /no product/);
+});
+
+test("Tolly reads and changes the shop's settings and hours", async () => {
+  const before = await use("get_settings", {});
+  assert.equal(before.hours.length, 7);
+  assert.equal(before.hours[0].name, "Sunday");
+
+  const changed = await use("update_settings", {
+    shop_name: "Fade Factory", prepay_mode: "fixed", prepay_amount: 10,
+    hours: [{ day: 0, closed: true }, { day: 6, open: "10:00", close: "16:00" }],
+  });
+  assert.equal(changed.ok, true);
+  assert.deepEqual(changed.changed.sort(), ["hours", "prepay_amount", "prepay_mode", "shop_name"]);
+  const after = await use("get_settings", {});
+  assert.deepEqual([after.shop_name, after.prepay_mode, after.prepay_amount], ["Fade Factory", "fixed", 10]);
+  assert.deepEqual(after.hours[0], { day: 0, name: "Sunday", closed: true });
+  assert.deepEqual(after.hours[6], { day: 6, name: "Saturday", closed: false, open: "10:00", close: "16:00" });
+  // The other days did not change.
+  assert.deepEqual(after.hours.slice(1, 6), before.hours.slice(1, 6));
+
+  // A bad value changes nothing.
+  for (const bad of [{ hours: [{ day: 2, open: "18:00", close: "09:00" }] }, { slot_step: 1 }, { prepay_percent: 500 }, { timezone: "Mars/Olympus" }]) {
+    const res = await use("update_settings", { shop_name: "Oops", ...bad });
+    assert.match(res.error, /Nothing was changed/, JSON.stringify(bad));
+  }
+  assert.equal((await use("get_settings", {})).shop_name, "Fade Factory");
+  assert.match((await use("update_settings", {})).error, /Nothing to change/);
+});
+
+test("in an automation run, Tolly cannot change the shop's setup", async () => {
+  const run = Object.keys(tools.staffTools({ automationRun: true }));
+  const change = ["create_appointment", "delete_appointment", "add_client", "update_client", "delete_client", "create_staff", "update_staff", "delete_staff",
+    "create_service", "update_service", "delete_service", "create_product", "update_product", "delete_product", "update_settings"];
+  const all = Object.keys(tools.staffTools());
+  for (const name of change) { assert.ok(!run.includes(name), name); assert.ok(all.includes(name), name); }
+  for (const name of ["list_appointments", "list_staff", "list_services", "list_products", "get_settings"]) assert.ok(run.includes(name), name);
+});
+
+test("clients never get the tools that change the shop", async () => {
+  const { clientTools } = await import("./clienttools.js");
+  const names = Object.keys(clientTools({ threadId: 1, clientId: 1, channel: "sms", baseUrl: "http://localhost" } as any));
+  // Clients have their own list_services. They get nothing that changes the shop or shows its records.
+  const staffOnly = Object.keys(tools.staffTools()).filter((name) => /^(create|update|delete|add)_/.test(name))
+    .concat(["list_appointments", "list_staff", "list_products", "get_settings"]);
+  assert.ok(staffOnly.length >= 19);
+  for (const name of staffOnly) assert.ok(!names.includes(name), name);
+});
+
+test("the barber sets up a service in the chat", async () => {
+  const seen = script([{ tool: "create_service", input: { name: "Kids Cut", minutes: 30, price: 25 } }, "Done. Kids Cut is $25 for 30 minutes."]);
+  assert.equal(await ask("Add a kids cut, 30 minutes, $25"), "Done. Kids Cut is $25 for 30 minutes.");
+  const row = await db.get<any>("SELECT duration, price, active FROM services WHERE name = 'Kids Cut'");
+  assert.deepEqual([row.duration, row.price, row.active], [30, 25, 1]);
+  assert.match(seen.prompts[0], /Before you delete anything/);
+});

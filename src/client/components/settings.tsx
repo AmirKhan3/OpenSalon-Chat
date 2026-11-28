@@ -35,7 +35,7 @@ const NOTICES: [number, string][] = [
   [720, "12 hours"], [1440, "1 day"], [2880, "2 days"],
 ];
 const selectClass =
-  "h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring";
+  "h-11 w-full rounded-xl border border-input bg-card px-3.5 text-base focus:outline-none md:text-sm focus:ring-2 focus:ring-ring";
 
 const val = (e: Event) => (e.currentTarget as HTMLInputElement).value;
 
@@ -125,8 +125,8 @@ export function SettingsPage() {
   return (
     <form onSubmit={save} className="max-w-2xl space-y-4 p-4 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
-        <a href="/book" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm text-primary underline-offset-4 hover:underline">
+        <h1 className="text-[1.65rem] font-medium leading-tight tracking-tight">Settings</h1>
+        <a href="/book" target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-1 text-sm text-primary underline-offset-4 hover:underline">
           Open the booking page <ExternalLink className="h-3.5 w-3.5" />
         </a>
       </div>
@@ -164,8 +164,8 @@ export function SettingsPage() {
             const d = settings.hours[i];
             return (
               <div key={day} className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <label className="flex min-h-10 w-32 items-center gap-2 text-sm font-medium">
-                  <input type="checkbox" className="h-4 w-4" checked={!d.closed} onChange={(e) => setDay(i, { closed: !e.currentTarget.checked })} />
+                <label className="flex min-h-11 w-32 items-center gap-2 text-sm font-medium">
+                  <input type="checkbox" className="h-5 w-5 accent-primary md:h-4 md:w-4" checked={!d.closed} onChange={(e) => setDay(i, { closed: !e.currentTarget.checked })} />
                   {day}
                 </label>
                 {d.closed ? (
@@ -215,7 +215,7 @@ export function SettingsPage() {
         <CardHeader><CardTitle className="text-base">Pre-pay</CardTitle></CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
           {!stripeConnected && (
-            <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground sm:col-span-2">
+            <p className="rounded-xl border border-dashed p-3 text-sm text-muted-foreground sm:col-span-2">
               Stripe is not connected, so clients do not pre-pay and bookings are confirmed at once.
               Set STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET on the server to turn this on.
             </p>
@@ -270,8 +270,8 @@ export function SettingsPage() {
             <Label htmlFor="agent-name">Name</Label>
             <Input id="agent-name" className="max-w-xs" value={settings.agent_name} maxLength={30} onInput={(e: Event) => set({ agent_name: val(e) })} />
           </div>
-          <label className="flex min-h-10 items-center gap-2 text-sm">
-            <input type="checkbox" className="h-4 w-4" checked={settings.sign_messages} onChange={(e) => set({ sign_messages: e.currentTarget.checked })} />
+          <label className="flex min-h-11 items-center gap-2 text-sm">
+            <input type="checkbox" className="h-5 w-5 accent-primary md:h-4 md:w-4" checked={settings.sign_messages} onChange={(e) => set({ sign_messages: e.currentTarget.checked })} />
             Sign the assistant's messages to clients, like "- {settings.agent_name.trim() || "Tolly"}"
           </label>
           <div className="space-y-1.5">
@@ -279,7 +279,7 @@ export function SettingsPage() {
             <textarea
               id="agent-instructions" rows={4} maxLength={2000} value={settings.agent_instructions}
               onInput={(e) => set({ agent_instructions: e.currentTarget.value })}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              className="w-full rounded-xl border border-input bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
             <p className="text-xs text-muted-foreground">
               Things the assistant should know or do. Example: "Parking is behind the shop. We do not cut kids under 5."
@@ -414,7 +414,7 @@ function CalendarLinks() {
               <Input readOnly aria-label={`Calendar link for ${link.name}`} value={link.feed_url} onFocus={(e: FocusEvent) => (e.currentTarget as HTMLInputElement).select()} />
             )}
             {asking === link.staff_id && (
-              <div className="space-y-2 rounded-md border border-destructive/40 p-3">
+              <div className="space-y-2 rounded-xl border border-destructive/40 p-3">
                 <p>Make a new link for {link.name}? The old link stops working. Calendars that use it will stop updating.</p>
                 <div className="flex gap-2">
                   <Button type="button" variant="destructive" onClick={() => renew(link)}>Yes, make a new link</Button>

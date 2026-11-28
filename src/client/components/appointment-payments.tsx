@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ConfirmSheet } from "./confirm-sheet";
 
 interface Payment {
   id: number; kind: "payment" | "refund"; method: string; method_name: string;
@@ -20,7 +21,7 @@ const METHODS = [
 ];
 
 const money = (n: number) => `${n < 0 ? "-" : ""}$${Math.abs(n).toFixed(2)}`;
-const selectClass = "flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm";
+const selectClass = "flex h-11 w-full rounded-xl border border-input bg-card px-3 text-base md:h-9 md:text-sm";
 
 /** What was paid for one visit, what is still due, and a form to record a payment. */
 export function AppointmentPayments({ appointmentId, status, totalPrice }: { appointmentId: number; status: string; totalPrice: number }) {
@@ -31,6 +32,9 @@ export function AppointmentPayments({ appointmentId, status, totalPrice }: { app
   const [method, setMethod] = useState("card_in_person");
   const [complete, setComplete] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [removing, setRemoving] = useState<Payment | null>(null);
+  // Kept apart from `removing`, so the question stays the same while the sheet slides away.
+  const [asking, setAsking] = useState(false);
 
   const show = (next: PaymentView) => {
     setView(next);
@@ -73,7 +77,7 @@ export function AppointmentPayments({ appointmentId, status, totalPrice }: { app
   };
 
   const remove = async (payment: Payment) => {
-    if (!window.confirm(`Remove this ${payment.kind} of ${money(Math.abs(payment.amount + payment.tip))}?`)) return;
+    setAsking(false);
     try {
       show(await api<PaymentView>("DELETE", `/api/appointments/${appointmentId}/payments/${payment.id}`));
     } catch (err) {
@@ -107,7 +111,7 @@ export function AppointmentPayments({ appointmentId, status, totalPrice }: { app
                     </div>
                     <span className={p.amount + p.tip < 0 ? "font-medium text-destructive" : "font-medium"}>{money(p.amount + p.tip)}</span>
                     {!p.stripe_ref && (
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0" aria-label="Remove this payment" onClick={() => remove(p)}>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0" aria-label="Remove this payment" onClick={() => { setRemoving(p); setAsking(true); }}>
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     )}
@@ -145,7 +149,7 @@ export function AppointmentPayments({ appointmentId, status, totalPrice }: { app
               </div>
               {canComplete && (
                 <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" className="h-4 w-4" checked={complete} onChange={(e) => setComplete((e.target as HTMLInputElement).checked)} />
+                  <input type="checkbox" className="h-5 w-5 accent-primary md:h-4 md:w-4" checked={complete} onChange={(e) => setComplete((e.target as HTMLInputElement).checked)} />
                   Mark the visit as completed
                 </label>
               )}
@@ -157,6 +161,13 @@ export function AppointmentPayments({ appointmentId, status, totalPrice }: { app
           </>
         )}
       </CardContent>
+      <ConfirmSheet
+        open={asking}
+        title={removing ? `Remove this ${removing.kind} of ${money(Math.abs(removing.amount + removing.tip))}?` : "Remove this payment?"}
+        action="Remove"
+        onConfirm={() => { if (removing) remove(removing); }}
+        onCancel={() => setAsking(false)}
+      />
     </Card>
   );
 }

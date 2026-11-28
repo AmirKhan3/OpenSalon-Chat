@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { ConfirmSheet } from "./confirm-sheet";
 
 type Trigger = "daily" | "before_appointment" | "after_appointment" | "booking_created" | "prepay_paid" | "booking_cancelled" | "booking_moved";
 type Action = "text_client" | "agent_task";
@@ -46,7 +47,7 @@ const STATUSES: [string, string][] = [
 const SOURCES: [string, string][] = [["staff", "Made by staff"], ["online", "Booked online"], ["chat", "Web chat"], ["sms", "Text message"]];
 const UNIT_MINUTES = { minutes: 1, hours: 60, days: 1440 };
 const selectClass =
-  "h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring";
+  "h-11 w-full rounded-xl border border-input bg-card px-3 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-ring";
 
 const val = (e: Event) => (e.currentTarget as HTMLInputElement).value;
 const errorText = (err: unknown) => (err instanceof ApiError || err instanceof Error ? err.message : "Something went wrong.");
@@ -115,11 +116,11 @@ function Switch({ on, label, disabled, onChange }: { on: boolean; label: string;
       type="button" role="switch" aria-checked={on} aria-label={label} disabled={disabled}
       onClick={(e) => { e.stopPropagation(); onChange(!on); }}
       className={cn(
-        "relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50",
+        "relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors before:absolute before:-inset-2 before:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50",
         on ? "bg-primary" : "bg-muted-foreground/30",
       )}
     >
-      <span className={cn("inline-block h-5 w-5 rounded-full bg-background shadow transition-transform", on ? "translate-x-6" : "translate-x-1")} />
+      <span className={cn("inline-block h-5 w-5 rounded-full bg-card shadow transition-transform", on ? "translate-x-6" : "translate-x-1")} />
     </button>
   );
 }
@@ -134,8 +135,8 @@ function Chips<T extends string | number>({ options, chosen, onChange }: { optio
             key={String(value)} type="button" aria-pressed={on}
             onClick={() => onChange(on ? chosen.filter((v) => v !== value) : [...chosen, value])}
             className={cn(
-              "min-h-9 rounded-full border px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              on ? "border-primary bg-primary text-primary-foreground" : "border-input bg-background hover:bg-accent",
+              "min-h-11 rounded-full border px-3.5 md:min-h-9 md:px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              on ? "border-primary bg-primary text-primary-foreground" : "border-input bg-card hover:bg-accent",
             )}
           >
             {label}
@@ -183,10 +184,10 @@ export function AutomationsPage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6">
+    <div className="mx-auto w-full max-w-3xl space-y-6 p-4 md:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Automations</h1>
+          <h1 className="text-[1.65rem] font-medium leading-tight tracking-tight">Automations</h1>
           <p className="text-sm text-muted-foreground">Routines that run on their own. Set one up once.</p>
           <p className="mt-1 text-xs text-muted-foreground">Ask your assistant to set one up.</p>
         </div>
@@ -250,6 +251,7 @@ function Editor({ initial, placeholders, assistantReady, staff, services, onClos
   const [preview, setPreview] = useState<{ text: string; sample: boolean; appointment: { client_name: string; date: string; time: string } | null } | null>(null);
   const [runs, setRuns] = useState<Run[] | null>(null);
   const [busy, setBusy] = useState(false);
+  const [asking, setAsking] = useState(false);
   const messageRef = useRef<HTMLTextAreaElement>(null);
   const set = (patch: Partial<Draft>) => { setD((old) => ({ ...old, ...patch })); setPreview(null); };
   const setFilter = (patch: Partial<Filters>) => set({ filters: { ...d.filters, ...patch } });
@@ -283,7 +285,8 @@ function Editor({ initial, placeholders, assistantReady, staff, services, onClos
   });
 
   const remove = () => act(async () => {
-    if (d.id === null || !window.confirm(`Delete "${d.name}"? Its history is deleted too.`)) return;
+    setAsking(false);
+    if (d.id === null || busy) return;
     await api("DELETE", `/api/automations/${d.id}`);
     await onSaved();
   });
@@ -457,13 +460,21 @@ function Editor({ initial, placeholders, assistantReady, staff, services, onClos
           {note && <p role="status" className="text-sm text-muted-foreground">{note}</p>}
 
           <div className="flex flex-wrap items-center justify-between gap-2">
-            {d.id !== null ? <Button type="button" variant="ghost" className="text-destructive" disabled={busy} onClick={remove}>Delete</Button> : <span />}
+            {d.id !== null ? <Button type="button" variant="ghost" className="text-destructive" disabled={busy} onClick={() => setAsking(true)}>Delete</Button> : <span />}
             <div className="flex gap-2">
               <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
               <Button type="button" disabled={busy} onClick={save}>{busy ? "Saving…" : "Save"}</Button>
             </div>
           </div>
         </div>
+        <ConfirmSheet
+          open={asking}
+          title={`Delete "${d.name}"?`}
+          text="Its history is deleted too."
+          action="Delete"
+          onConfirm={remove}
+          onCancel={() => setAsking(false)}
+        />
       </DialogContent>
     </Dialog>
   );

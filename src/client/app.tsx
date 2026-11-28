@@ -4,6 +4,8 @@ import { Login } from "./components/login";
 import { AppContext } from "./context";
 import { useAppState } from "./hooks/use-app";
 import { useRouter } from "./hooks/use-router";
+import { useIsPhone } from "./hooks/use-is-phone";
+import { screenFor } from "@/lib/phone-nav";
 import { Sidebar } from "./components/sidebar";
 import { Dashboard } from "./components/dashboard";
 import { CalendarView } from "./components/calendar-view";
@@ -59,7 +61,7 @@ export function App() {
     return (
       <div className="flex h-dvh flex-col items-center justify-center gap-3 p-6 text-center">
         <p className="text-sm text-muted-foreground">We could not reach the server.</p>
-        <button className="min-h-11 rounded-md border px-4 text-sm font-medium" onClick={check}>Try again</button>
+        <button className="min-h-11 rounded-full border bg-card px-5 text-sm font-medium" onClick={check}>Try again</button>
       </div>
     );
   }
@@ -82,7 +84,9 @@ function Shell({ onLogout }: { onLogout?: () => void }) {
     }
   }, [isAgent]);
 
-  const { view, id, navigate } = useRouter();
+  const { view: routeView, id, home, navigate } = useRouter();
+  // On a phone the app opens on the assistant. On a wide screen it opens on the dashboard.
+  const view = screenFor(routeView, home, useIsPhone());
   const appState = useAppState(isAgent, navigate);
 
   useEffect(() => {
@@ -103,7 +107,7 @@ function Shell({ onLogout }: { onLogout?: () => void }) {
     if (view === "clients" && id && appState.selectedClient) return <ClientDetail />;
     switch (view) {
       case "inbox": return <Inbox id={id} navigate={navigate} />;
-      case "assistant": return <AssistantPage />;
+      case "assistant": return <AssistantPage onBook={() => setBooking(true)} />;
       case "calendar": return <CalendarView />;
       case "appointments": return <AppointmentList />;
       case "clients": return <ClientList />;
@@ -122,7 +126,7 @@ function Shell({ onLogout }: { onLogout?: () => void }) {
     <AppContext.Provider value={appState}>
       <div className="flex h-dvh flex-col overflow-hidden pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] md:flex-row print:block print:h-auto print:overflow-visible">
         <Sidebar currentView={view} onLogout={onLogout} />
-        <main className="min-h-0 min-w-0 flex-1 overflow-auto bg-background pb-16 pt-[env(safe-area-inset-top)] md:pb-0 md:pt-0 print:overflow-visible print:p-0">
+        <main className="min-h-0 min-w-0 flex-1 overflow-auto pb-[5.25rem] pt-[env(safe-area-inset-top)] md:pb-0 md:pt-0 print:overflow-visible print:p-0">
           {appState.loading ? (
             <div className="flex h-full items-center justify-center text-muted-foreground">Loading...</div>
           ) : (
@@ -130,7 +134,7 @@ function Shell({ onLogout }: { onLogout?: () => void }) {
           )}
         </main>
       </div>
-      <MobileNav currentView={view} />
+      <MobileNav screen={view} />
       {canBook && !appState.loading && !booking && <BookFab onClick={() => setBooking(true)} />}
       {booking && <CreateAppointment onClose={() => setBooking(false)} />}
       <ErrorBanner />

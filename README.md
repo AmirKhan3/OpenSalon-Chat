@@ -56,6 +56,7 @@ Open `http://localhost:5173`. The API runs on `http://localhost:8787`. The booki
 
 With no `DATABASE_URL`, Tolly uses an embedded Postgres (PGlite) and keeps its data in `./.data/pglite`.
 On first start it adds sample data: 3 barbers, 6 services, 3 clients. Set `SEED_DEMO_DATA=false` to turn that off.
+To try the inbox, also set `SEED_DEMO_CHATS=true`. It adds three example chats. Do not set it on a real shop.
 
 To run it the way a real server does:
 
@@ -94,6 +95,7 @@ Set **one** of these:
 
 - `AI_GATEWAY_API_KEY`: a Vercel AI Gateway key. It works with many model providers.
 - `ANTHROPIC_API_KEY`: an Anthropic key, to call Anthropic directly.
+- `OPENAI_COMPATIBLE_BASE_URL` and `OPENAI_COMPATIBLE_API_KEY`: another provider with an OpenAI-style API. `AGENT_MODEL` is needed too, and the model must support tool calls.
 
 Pick the model with `AGENT_MODEL`. With the gateway, write it as the gateway lists it (`provider/model`).
 Check that the model name exists in your account before you go live.
@@ -279,6 +281,12 @@ pnpm build
 ```
 
 Tests use an in-memory database, a fake Stripe, a fake SMS provider, and a mock AI model. They do not need the network or any keys.
+
+## Design checks
+
+After any change to how screens look, run the checklist in [uichecklist.md](uichecklist.md). It covers type, layout, color, style, icons and forms, phone first. It also lists what is still open.
+
+Colors are semantic tokens in `src/client/styles.css`. Use the token names (`bg-card`, `text-muted-foreground`, `bg-primary`, `text-danger`) in components, not hex codes or Tailwind color names. Colors saved as data are in `src/client/lib/palette.ts`. Controls that float above content use glass, in the spirit of Apple's Liquid Glass. There are four styles, all in that file: `glass` (tab bar, sidebar, floating chips), `glass-thick` (menus, pop-ups, dialogs), `glass-btn` (clear button, second-level actions) and `glass-tint` (steel button, the one main action on a screen). Their tokens start with `--glass-`. Do not put glass on content such as cards and lists. Pop-ups are sheets, not modals: `ui/dialog.tsx` slides up from the bottom on phones (class `sheet`) and sits in the middle on wide screens. Use `ConfirmSheet` (`confirm-sheet.tsx`) to ask before removing something, not `window.confirm`. Glass turns solid when the person asks for less transparency or more contrast. The typeface is Allo (`allo-font`, SIL Open Font License); change how round it is with `--type-roundness` in the same file.
 
 ## Tech
 

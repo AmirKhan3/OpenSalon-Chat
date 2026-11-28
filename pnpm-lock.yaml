@@ -11,6 +11,9 @@ importers:
       '@ai-sdk/anthropic':
         specifier: ^4.0.110
         version: 4.0.110(zod@3.25.76)
+      '@ai-sdk/openai-compatible':
+        specifier: ^3.0.96
+        version: 3.0.96(zod@3.25.76)
       '@electric-sql/pglite':
         specifier: ^0.6.0
         version: 0.6.0
@@ -62,6 +65,9 @@ importers:
       ai:
         specifier: ^7.0.183
         version: 7.0.183(zod@3.25.76)
+      allo-font:
+        specifier: ^1.1.1
+        version: 1.1.1
       class-variance-authority:
         specifier: ^0.7.0
         version: 0.7.1
@@ -128,6 +134,12 @@ packages:
 
   '@ai-sdk/gateway@4.0.156':
     resolution: {integrity: sha512-Nv1ILpLYNDlIV/beyo6Uc6jZcwTDzLMiSqer4PUEmIHqyOceLHf58lv1bfntAJ0xZxaBa9BtYDOv3/Msu0mQrQ==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
+  '@ai-sdk/openai-compatible@3.0.96':
+    resolution: {integrity: sha512-1DzzxcIIU5mWx4PDuvgfSh6tF0vRPNaYVrev9UgaCuvREl1VrlwgaQemqIT0jyfRAZKFycfpaEt9WRk9R2DSkg==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -1336,6 +1348,9 @@ packages:
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
+  allo-font@1.1.1:
+    resolution: {integrity: sha512-DLDG6KM2GWzaPm8MHY0hSHsTUJqElLQUhtyhMb+QmDZaGxK1H5ceM3uOsYd1YeyWj8w5h6t+xosNiPOHfhewhQ==}
+
   ansi-regex@6.6.0:
     resolution: {integrity: sha512-XZ5apbzreCbXSKwPjJstu8R0zOi247w3XYwWxtwBXgpZrCyc1Ka7p9/xY0A9/diMewmHbEKz+FIraWaEWjlN5g==}
     engines: {node: '>=12'}
@@ -2030,6 +2045,12 @@ snapshots:
       '@ai-sdk/provider': 4.0.39
       '@ai-sdk/provider-utils': 5.0.85(zod@3.25.76)
       '@vercel/oidc': 3.2.0
+      zod: 3.25.76
+
+  '@ai-sdk/openai-compatible@3.0.96(zod@3.25.76)':
+    dependencies:
+      '@ai-sdk/provider': 4.0.39
+      '@ai-sdk/provider-utils': 5.0.85(zod@3.25.76)
       zod: 3.25.76
 
   '@ai-sdk/provider-utils@5.0.85(zod@3.25.76)':
@@ -2939,6 +2960,8 @@ snapshots:
       '@ai-sdk/provider': 4.0.39
       '@ai-sdk/provider-utils': 5.0.85(zod@3.25.76)
       zod: 3.25.76
+
+  allo-font@1.1.1: {}
 
   ansi-regex@6.6.0: {}
 

@@ -9,6 +9,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatusBadge } from "./status-badge";
 import { CreateAppointment } from "./create-appointment";
+import { friendlyDate } from "@/lib/dates";
+import { formatClock } from "@/lib/calendar-slot";
+import { DEFAULT_STAFF_COLOR } from "@/lib/palette";
 
 export function ClientDetail() {
   const { selectedClient: client, selectedClientAppointments: appointments, navigate, updateClient, deleteClient } = useApp();
@@ -27,12 +30,12 @@ export function ClientDetail() {
   };
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 p-4 md:p-6">
       <div className="flex flex-wrap items-center gap-3">
         <Button variant="ghost" size="sm" onClick={() => navigate("/clients")}>
           <ArrowLeft className="mr-1 h-4 w-4" /> Back
         </Button>
-        <h1 className="min-w-0 flex-1 text-2xl font-bold">{client.name}</h1>
+        <h1 className="min-w-0 flex-1 text-[1.65rem] font-medium leading-tight tracking-tight">{client.name}</h1>
         <div className="flex w-full gap-2 sm:w-auto">
           <Button size="sm" className="flex-1 sm:flex-none" onClick={() => setShowCreate(true)}>
             <Plus className="mr-1 h-3.5 w-3.5" /> Book appointment
@@ -105,7 +108,7 @@ export function ClientDetail() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-xs text-muted-foreground">{apt.scheduled_date} at {apt.start_time}</p>
+                      <p className="text-xs text-muted-foreground">{friendlyDate(apt.scheduled_date)}, {formatClock(apt.start_time)}</p>
                       <p className="font-medium">{apt.service_names || "—"}</p>
                       {apt.latest_note && <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{apt.latest_note}</p>}
                     </div>
@@ -113,7 +116,7 @@ export function ClientDetail() {
                   </div>
                   <div className="mt-3 flex items-center justify-between text-sm">
                     <span className="flex items-center gap-1.5">
-                      {apt.staff_name && <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: apt.staff_color || "#7c3aed" }} />}
+                      {apt.staff_name && <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: apt.staff_color || DEFAULT_STAFF_COLOR }} />}
                       <span>{apt.staff_name || "—"}</span>
                     </span>
                     <span className="font-medium">${apt.total_price.toFixed(2)}</span>
@@ -138,13 +141,13 @@ export function ClientDetail() {
                 {appointments.map((apt) => (
                   <TableRow key={apt.id} className="cursor-pointer" onClick={() => navigate(`/appointments/${apt.id}`)}>
                     <TableCell className="min-w-52">
-                      <p className="text-xs text-muted-foreground">{apt.scheduled_date} at {apt.start_time}</p>
+                      <p className="text-xs text-muted-foreground">{friendlyDate(apt.scheduled_date)}, {formatClock(apt.start_time)}</p>
                       <p className="font-medium">{apt.service_names || "—"}</p>
                       {apt.latest_note && <p className="mt-1 line-clamp-2 max-w-md text-xs text-muted-foreground">{apt.latest_note}</p>}
                     </TableCell>
                     <TableCell>
                       <span className="flex items-center gap-1.5">
-                        {apt.staff_name && <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: apt.staff_color || "#7c3aed" }} />}
+                        {apt.staff_name && <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: apt.staff_color || DEFAULT_STAFF_COLOR }} />}
                         <span className="text-sm">{apt.staff_name || "—"}</span>
                       </span>
                     </TableCell>

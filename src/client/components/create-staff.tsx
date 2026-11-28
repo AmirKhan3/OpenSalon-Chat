@@ -4,8 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { SWATCHES } from "@/lib/palette";
 
-const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#ef4444", "#14b8a6", "#f97316"];
+const COLORS: readonly string[] = SWATCHES;
 
 export function CreateStaff({ onClose }: { onClose: () => void }) {
   const { addStaff, setError } = useApp();

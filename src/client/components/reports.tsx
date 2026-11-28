@@ -33,15 +33,15 @@ const MONTHS = ["January", "February", "March", "April", "May", "June", "July", 
 
 const money = (n: number) => `${n < 0 ? "-" : ""}$${Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const monthName = (month: string) => `${MONTHS[Number(month.slice(5, 7)) - 1] ?? month} ${month.slice(0, 4)}`;
-const selectClass = "h-9 rounded-md border border-input bg-background px-3 text-sm";
+const selectClass = "h-11 rounded-xl border border-input bg-card px-3 text-base md:h-9 md:text-sm";
 const cell = "px-3 py-2";
 const num = "px-3 py-2 text-right tabular-nums";
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div className="rounded-lg border p-4">
+    <div className="rounded-[1.25rem] border border-hairline bg-card p-4 shadow-soft">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-xl font-bold tabular-nums">{value}</p>
+      <p className="text-xl font-medium tabular-nums">{value}</p>
       {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
     </div>
   );
@@ -59,7 +59,9 @@ function Section({ title, children }: { title: string; children: preact.Componen
 const Empty = ({ text }: { text: string }) => <p className="px-6 pb-4 text-sm text-muted-foreground">{text}</p>;
 
 export function ReportsPage() {
-  const { setError } = useApp();
+  const { setError, staffLookup } = useApp();
+  // One barber: a "By barber" table would only repeat the totals.
+  const oneBarber = staffLookup.length === 1;
   const thisYear = new Date().getFullYear();
   const [tab, setTab] = useState<Tab>("bookings");
   const [year, setYear] = useState(thisYear);
@@ -91,12 +93,12 @@ export function ReportsPage() {
   const years = Array.from({ length: 6 }, (_, i) => thisYear - i);
 
   const tabClass = (t: Tab) =>
-    `rounded-sm px-3 py-1.5 text-sm font-medium ${tab === t ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"}`;
+    `min-h-11 rounded-full px-4 py-1.5 text-sm font-medium md:min-h-0 ${tab === t ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`;
 
   return (
     <div className="space-y-6 p-4 md:p-6">
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="flex-1 text-2xl font-bold">Reports</h1>
+        <h1 className="flex-1 text-[1.65rem] font-medium leading-tight tracking-tight">Reports</h1>
         <div className="flex flex-wrap items-center gap-2 print:hidden">
           <label className="sr-only" htmlFor="report-year">Year</label>
           <select id="report-year" className={selectClass} value={year} onChange={(e) => setYear(Number((e.target as HTMLSelectElement).value))}>
@@ -109,7 +111,7 @@ export function ReportsPage() {
         </div>
       </div>
 
-      <div role="tablist" className="inline-flex h-10 items-center rounded-md bg-muted p-1 print:hidden">
+      <div role="tablist" className="inline-flex h-[3.25rem] items-center rounded-full bg-muted p-1 md:h-10 print:hidden">
         <button role="tab" aria-selected={tab === "bookings"} className={tabClass("bookings")} onClick={() => setTab("bookings")}>Bookings</button>
         <button role="tab" aria-selected={tab === "income"} className={tabClass("income")} onClick={() => setTab("income")}>Income &amp; taxes</button>
       </div>
@@ -121,7 +123,7 @@ export function ReportsPage() {
           </p>
           {!bookingsNow ? <p className="text-sm text-muted-foreground">Loading...</p> : (
             <>
-              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <div className="grid grid-cols-2 gap-3 max-lg:[&>*:last-child:nth-child(odd)]:col-span-2 lg:grid-cols-4">
                 <Stat label="Bookings" value={String(bookingsNow.bookings)} hint={`${money(bookingsNow.booked_value)} booked`} />
                 <Stat label="Completed" value={String(bookingsNow.completed)} hint={`${money(bookingsNow.completed_value)} of visits`} />
                 <Stat label="Cancelled" value={String(bookingsNow.cancelled)} />
@@ -129,7 +131,7 @@ export function ReportsPage() {
                 <Stat label="New clients" value={String(bookingsNow.new_clients)} />
               </div>
               <div className="grid gap-6 lg:grid-cols-2">
-                <Section title="By barber">
+                {!oneBarber && <Section title="By barber">
                   {bookingsNow.by_barber.length === 0 ? <Empty text="No bookings in this period." /> : (
                     <table className="w-full text-sm">
                       <thead><tr className="border-b text-left text-xs text-muted-foreground"><th className={cell}>Barber</th><th className={num}>Bookings</th><th className={num}>Booked</th></tr></thead>
@@ -138,7 +140,7 @@ export function ReportsPage() {
                       ))}</tbody>
                     </table>
                   )}
-                </Section>
+                </Section>}
                 <Section title="Top services">
                   {bookingsNow.top_services.length === 0 ? <Empty text="No bookings in this period." /> : (
                     <table className="w-full text-sm">
@@ -172,7 +174,7 @@ export function ReportsPage() {
           </div>
           {!incomeNow ? <p className="text-sm text-muted-foreground">Loading...</p> : (
             <>
-              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <div className="grid grid-cols-2 gap-3 max-lg:[&>*:last-child:nth-child(odd)]:col-span-2 lg:grid-cols-4">
                 <Stat label="Income" value={money(incomeNow.income)} hint="Services + tips − refunds" />
                 <Stat label="Services" value={money(incomeNow.services)} />
                 <Stat label="Tips" value={money(incomeNow.tips)} />
@@ -210,7 +212,7 @@ export function ReportsPage() {
                     </table>
                   )}
                 </Section>
-                <Section title="By barber">
+                {!oneBarber && <Section title="By barber">
                   {incomeNow.by_barber.length === 0 ? <Empty text="No payments in this period." /> : (
                     <table className="w-full text-sm">
                       <thead><tr className="border-b text-left text-xs text-muted-foreground"><th className={cell}>Barber</th><th className={num}>Tips</th><th className={num}>Income</th></tr></thead>
@@ -219,7 +221,7 @@ export function ReportsPage() {
                       ))}</tbody>
                     </table>
                   )}
-                </Section>
+                </Section>}
               </div>
               <p className="text-xs text-muted-foreground">
                 Card fees are not subtracted. Check your Stripe reports for fees. This report is not tax advice. Ask your accountant how to use it.

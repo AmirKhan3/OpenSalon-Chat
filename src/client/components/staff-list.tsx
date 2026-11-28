@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CreateStaff } from "./create-staff";
+import { inkOn } from "@/lib/calendar-slot";
 
 export function StaffList() {
   const { staffMembers, deleteStaff, updateStaff } = useApp();
@@ -13,7 +14,7 @@ export function StaffList() {
   return (
     <div className="space-y-4 p-4 sm:p-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">Staff</h1>
+        <h1 className="text-[1.65rem] font-medium leading-tight tracking-tight">Staff</h1>
         <Button size="sm" className="min-h-11 sm:min-h-0" onClick={() => setShowCreate(true)}>
           <Plus className="mr-1 h-3.5 w-3.5" /> Add Staff
         </Button>
@@ -33,7 +34,7 @@ export function StaffList() {
             {staffMembers.map((s) => (
               <div key={s.id} className="p-4">
                 <div className="flex items-start gap-3">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-base font-bold text-white" style={{ backgroundColor: s.color }}>
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-base font-semibold" style={{ backgroundColor: s.color, color: inkOn(s.color) }}>
                     {s.name.charAt(0).toUpperCase()}
                   </div>
                   <div className="min-w-0 flex-1">
@@ -84,7 +85,7 @@ export function StaffList() {
                   <TableRow key={s.id}>
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white" style={{ backgroundColor: s.color }}>
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold" style={{ backgroundColor: s.color, color: inkOn(s.color) }}>
                           {s.name.charAt(0).toUpperCase()}
                         </div>
                         <div className="min-w-0">

@@ -1,11 +1,15 @@
-import { useState, useCallback, useEffect } from "preact/hooks";
+import { useState, useCallback, useEffect, useRef } from "preact/hooks";
 import { api } from "../api";
 import { today } from "../lib/dates";
+import { parseView, viewDays, type CalendarViewKind } from "../lib/calendar-views";
 import type {
   Appointment, Client, Staff, Service, Product, BlockedSlot, Stats, PaginatedState,
   ClientLookup, StaffLookup,
 } from "../types";
 import type { AppContextValue } from "../context";
+
+/** Where the browser remembers the calendar view. */
+const VIEW_KEY = "tolly.calendarView";
 
 export function useAppState(isAgent: boolean, navigate: (to: string) => void): AppContextValue {
   const [stats, setStats] = useState<Stats>({ appointments: 0, clients: 0, staff: 0, services: 0, products: 0, today_appointments: 0, upcoming_appointments: 0, completed_appointments: 0, revenue: 0, low_stock_products: 0 });
@@ -22,6 +26,18 @@ export function useAppState(isAgent: boolean, navigate: (to: string) => void): A
   // Calendar
   const todayStr = today();
   const [calendarDate, setCalendarDate] = useState(todayStr);
+  const [calendarView, setView] = useState<CalendarViewKind>(() => {
+    try { return parseView(window.localStorage.getItem(VIEW_KEY)); } catch { return "day"; }
+  });
+  // The loader reads the view from here, so every caller loads the days now on screen.
+  const viewNow = useRef(calendarView);
+  viewNow.current = calendarView;
+  const calendarLoad = useRef(0);
+  const setCalendarView = useCallback((view: CalendarViewKind) => {
+    viewNow.current = view;
+    setView(view);
+    try { window.localStorage.setItem(VIEW_KEY, view); } catch { /* The view still changes; it is just not remembered. */ }
+  }, []);
   const [calendarAppointments, setCalendarAppointments] = useState<Appointment[]>([]);
   const [calendarBlocked, setCalendarBlocked] = useState<BlockedSlot[]>([]);
 
@@ -62,7 +78,11 @@ export function useAppState(isAgent: boolean, navigate: (to: string) => void): A
   }, []);
 
   const fetchCalendar = useCallback(async (date: string) => {
-    const data = await api<{ appointments: Appointment[]; blocked_slots: BlockedSlot[] }>("GET", `/api/calendar?start=${date}&end=${date}`);
+    const days = viewDays(viewNow.current, date);
+    const load = ++calendarLoad.current;
+    const data = await api<{ appointments: Appointment[]; blocked_slots: BlockedSlot[] }>("GET", `/api/calendar?start=${days[0]}&end=${days[days.length - 1]}`);
+    // A slower, older answer must not replace a newer one.
+    if (load !== calendarLoad.current) return;
     setCalendarAppointments(data.appointments);
     setCalendarBlocked(data.blocked_slots);
   }, []);
@@ -132,7 +152,7 @@ export function useAppState(isAgent: boolean, navigate: (to: string) => void): A
 
   useEffect(() => {
     fetchCalendar(calendarDate).catch((err) => setError((err as Error).message));
-  }, [calendarDate]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [calendarDate, calendarView]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchClients(clientsPag, clientsSearch).catch((err) => setError((err as Error).message));
@@ -327,7 +347,7 @@ export function useAppState(isAgent: boolean, navigate: (to: string) => void): A
     appointmentsStatusFilter, setAppointmentsStatusFilter,
     addAppointment, updateAppointment, deleteAppointment,
     selectedAppointment, selectAppointment, addAppointmentNote, deleteAppointmentNote,
-    calendarAppointments, calendarBlocked, calendarDate, setCalendarDate,
+    calendarAppointments, calendarBlocked, calendarDate, setCalendarDate, calendarView, setCalendarView,
     addBlockedSlot, deleteBlockedSlot,
     clients, clientsPag, setClientsPage, clientsSearch, setClientsSearch,
     addClient, createClient, updateClient, deleteClient,

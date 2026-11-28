@@ -4,6 +4,8 @@ import type { View } from "../types";
 export interface RouteState {
   view: View;
   id: string | null;
+  /** True when the address is "/" with nothing after it. */
+  home: boolean;
 }
 
 const VIEW_ROUTES: Record<string, View> = {
@@ -23,13 +25,13 @@ const VIEW_ROUTES: Record<string, View> = {
   "more": "more",
 };
 
-function parseRoute(path: string): RouteState {
+export function parseRoute(path: string): RouteState {
   const clean = path.replace(/^\/+|\/+$/g, "");
   const segments = clean.split("/");
   const viewKey = segments[0] || "";
   const view = VIEW_ROUTES[viewKey] || "dashboard";
   const id = segments[1] || null;
-  return { view, id };
+  return { view, id, home: clean === "" };
 }
 
 export function useRouter() {

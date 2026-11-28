@@ -70,15 +70,57 @@ test("sample data goes only into empty tables, and can be turned off", async () 
   try {
     await db.run("INSERT INTO clients (name) VALUES (?)", ["Already here"]);
     await ensureSeeded();
-    assert.equal((await db.get("SELECT COUNT(*)::int AS count FROM staff"))?.count, 3);
+    assert.equal((await db.get("SELECT COUNT(*)::int AS count FROM staff"))?.count, 1);
     assert.equal((await db.get("SELECT COUNT(*)::int AS count FROM services"))?.count, 6);
     // The clients table was not empty, so it is left alone.
     assert.equal((await db.get("SELECT COUNT(*)::int AS count FROM clients"))?.count, 1);
     // New rows get ids after the sample rows.
-    assert.equal((await db.run("INSERT INTO staff (name) VALUES (?)", ["New barber"])).lastInsertRowid, 4);
+    assert.equal((await db.run("INSERT INTO staff (name) VALUES (?)", ["New barber"])).lastInsertRowid, 2);
     assert.equal((await db.run("INSERT INTO services (name) VALUES (?)", ["New service"])).lastInsertRowid, 7);
   } finally {
     process.env.SEED_DEMO_DATA = "false";
+  }
+});
+
+test("example chats are added only when asked for, once, and show the hand-off", async () => {
+  process.env.SEED_DEMO_DATA = "true";
+  try {
+    // Off by default: sample data alone adds no chats.
+    await db.resetDB("pglite:memory");
+    await ensureSeeded();
+    assert.equal((await db.get("SELECT COUNT(*)::int AS count FROM chat_threads"))?.count, 0);
+
+    await db.resetDB("pglite:memory");
+    process.env.SEED_DEMO_CHATS = "true";
+    await ensureSeeded();
+    const list = await (await app.request("/api/chat/threads")).json() as any;
+    assert.equal(list.threads.length, 3);
+    assert.equal(list.needs_attention, 1);
+    // The chat that needs the barber is the newest, so it is on top.
+    const top = list.threads[0];
+    assert.equal(top.display_name, "Tony Russo");
+    assert.equal(top.needs_attention, true);
+    assert.equal(top.mode, "human");
+    assert.equal(top.staff_unread, 2);
+    assert.equal(top.client_id, 2);
+    // No phone number: a reply can never go out as a text.
+    assert.ok(list.threads.every((t: any) => t.channel === "web" && t.phone === null));
+
+    const detail = await (await app.request(`/api/chat/threads/${top.id}`)).json() as any;
+    assert.ok(detail.messages.some((m: any) => m.sender === "note"));
+    assert.ok(detail.messages.some((m: any) => m.sender === "agent" && m.body.endsWith("- Tolly")));
+    assert.ok(detail.messages.every((m: any) => !m.body.includes("{name}")));
+    assert.match(detail.messages[0].created_at, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+
+    // A second start adds nothing.
+    await db.resetDB("pglite:memory");
+    const kept = await db.run("INSERT INTO chat_threads (kind, channel) VALUES ('client', 'web')");
+    await ensureSeeded();
+    assert.equal((await db.get("SELECT COUNT(*)::int AS count FROM chat_threads WHERE kind = 'client'"))?.count, 1);
+    assert.ok(kept.lastInsertRowid);
+  } finally {
+    process.env.SEED_DEMO_DATA = "false";
+    delete process.env.SEED_DEMO_CHATS;
   }
 });
 

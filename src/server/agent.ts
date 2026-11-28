@@ -1,5 +1,6 @@
 import { gateway, generateText, stepCountIs, type LanguageModel, type ModelMessage } from "ai";
 import { createAnthropic } from "@ai-sdk/anthropic";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { getSettings, type ShopSettings } from "./settings.js";
 import { addDays, shopNow, weekdayOf } from "./shoptime.js";
 import { money, publicPrepayPolicy } from "./prepay.js";
@@ -32,9 +33,26 @@ export function setAgentModel(model?: LanguageModel | null): void {
   override = model;
 }
 
+/** Where the model comes from: "gateway", "anthropic", "compatible", or null when no key is set. */
+export function agentProvider(): "gateway" | "anthropic" | "compatible" | null {
+  const has = (name: string) => (process.env[name] ?? "").trim() !== "";
+  if (has("AI_GATEWAY_API_KEY")) return "gateway";
+  if (has("ANTHROPIC_API_KEY")) return "anthropic";
+  // Another provider with an OpenAI-style API. It has no default model, so all three are needed.
+  if (has("OPENAI_COMPATIBLE_BASE_URL") && has("OPENAI_COMPATIBLE_API_KEY") && has("AGENT_MODEL")) return "compatible";
+  return null;
+}
+
 function resolveModel(): LanguageModel | null {
   if (override !== undefined) return override;
   const name = (process.env.AGENT_MODEL ?? "").trim() || DEFAULT_MODEL;
+  if (agentProvider() === "compatible") {
+    return createOpenAICompatible({
+      name: "compatible",
+      baseURL: process.env.OPENAI_COMPATIBLE_BASE_URL!.trim().replace(/\/+$/, ""),
+      apiKey: process.env.OPENAI_COMPATIBLE_API_KEY!.trim(),
+    })(name);
+  }
   if ((process.env.AI_GATEWAY_API_KEY ?? "").trim()) return gateway(name.includes("/") ? name : `anthropic/${name}`);
   const key = (process.env.ANTHROPIC_API_KEY ?? "").trim();
   if (key) return createAnthropic({ apiKey: key })(name.replace(/^anthropic\//, ""));
@@ -129,6 +147,8 @@ function staffPrompt(settings: ShopSettings, automationRun = false): string {
       "- Ask the owner to confirm before an action that affects many clients (more than 3), and when the request is unclear. Say exactly what you will do and to whom.",
       "- One clear action on one booking needs no question: do it, then say what you did.",
       "- Before you create a text routine (automation), show the owner a preview of the text and wait for their OK.",
+      "- You can add, change and remove bookings, clients, barbers, services and products, and change the shop's settings. Look up the id first with a list or find tool.",
+      "- Before you delete anything, say what you will delete and wait for the owner's OK. Adding and changing need no question when the request is clear.",
       "- For every question about money, use income_report. It counts money really taken. Booked prices are not income.",
       "- Cancelling never refunds a pre-pay. Tell the owner when a cancelled booking had one.",
       automationRun
@@ -290,7 +310,7 @@ async function sendReceipts(threadId: number, ctx: ClientContext, settings: Shop
 /** Tolly cannot answer. A client goes to a barber. The barber's own chat gets a plain notice. */
 async function giveUp(thread: Thread, reason: string): Promise<void> {
   if (thread.kind === "assistant") {
-    await addMessage(thread.id, "system", `${reason} Add AI_GATEWAY_API_KEY or ANTHROPIC_API_KEY on the server, then try again.`);
+    await addMessage(thread.id, "system", `${reason} Add an AI key on the server (see .env.example), then try again.`);
     return;
   }
   await handToBarber(thread.id, reason, true);

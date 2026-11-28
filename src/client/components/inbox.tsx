@@ -52,7 +52,7 @@ export function Inbox({ id, navigate }: { id: string | null; navigate: (to: stri
     <div className="flex h-full min-h-0">
       <section aria-label="Chats" className={cn("min-h-0 w-full flex-col border-r md:flex md:w-80 md:shrink-0", selected ? "hidden" : "flex")}>
         <div className="flex items-center justify-between gap-2 border-b px-4 py-4">
-          <h1 className="text-2xl font-bold tracking-tight">Inbox</h1>
+          <h1 className="text-[1.65rem] font-medium leading-tight tracking-tight">Inbox</h1>
           {list && list.needs_attention > 0 && <Badge variant="destructive">{list.needs_attention} need you</Badge>}
         </div>
         {error && <p className="p-4 text-sm text-destructive">{error}</p>}
@@ -194,18 +194,18 @@ function ThreadView({ id, onBack, onChanged }: { id: number; onBack: () => void;
       </div>
 
       {error && <p role="alert" className="px-4 pb-2 text-sm text-destructive">{error}</p>}
-      <form onSubmit={send} className={cn("space-y-2 border-t px-3 py-3 sm:px-4", asNote && "bg-amber-50 dark:bg-amber-950/30")}>
+      <form onSubmit={send} className={cn("space-y-2 border-t px-3 py-3 sm:px-4", asNote && "bg-warning-soft")}>
         <label htmlFor="inbox-reply" className="sr-only">{asNote ? "Staff note" : "Reply"}</label>
         <textarea
           id="inbox-reply" rows={2} maxLength={2000} value={draft}
           placeholder={asNote ? "Staff note. The client never sees it." : human ? "Write a reply" : "Write a reply. The assistant stops when you send it."}
           onInput={(e) => setDraft(e.currentTarget.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); } }}
-          className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-ring sm:text-sm"
+          className="w-full resize-none rounded-xl border border-input bg-card px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-ring sm:text-sm"
         />
         <div className="flex flex-wrap items-center justify-between gap-2">
           <label className="flex min-h-10 items-center gap-2 text-sm">
-            <input type="checkbox" className="h-4 w-4" checked={asNote} onChange={(e) => setAsNote(e.currentTarget.checked)} />
+            <input type="checkbox" className="h-5 w-5 accent-primary md:h-4 md:w-4" checked={asNote} onChange={(e) => setAsNote(e.currentTarget.checked)} />
             Staff note (hidden from the client)
           </label>
           <Button type="submit" disabled={busy || !draft.trim()}>{asNote ? "Save note" : "Send"}</Button>
@@ -221,7 +221,7 @@ function StaffBubble({ message }: { message: ChatMessage }) {
   }
   if (message.sender === "note") {
     return (
-      <div className="mx-auto flex max-w-[90%] items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+      <div className="mx-auto flex max-w-[90%] items-start gap-2 rounded-2xl border border-warning-border bg-warning-soft px-3 py-2 text-sm text-warning-foreground">
         <StickyNote className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
         <p className="min-w-0 whitespace-pre-wrap break-words"><span className="font-medium">Staff note. </span>{message.body}</p>
       </div>
@@ -238,7 +238,7 @@ function StaffBubble({ message }: { message: ChatMessage }) {
       )}>
         {message.body}
       </p>
-      <span className={cn("mt-0.5 px-1 text-[11px]", failed ? "text-destructive" : "text-muted-foreground")}>
+      <span className={cn("mt-0.5 px-1 text-xs", failed ? "text-destructive" : "text-muted-foreground")}>
         {theirs ? "Client" : message.sender === "agent" ? "Assistant" : "You"} · {chatTime(message.created_at)}
         {failed ? ` · Not delivered${message.delivery_status.includes(":") ? ` (${message.delivery_status.split(":").slice(1).join(":").trim()})` : ""}` : ""}
       </span>

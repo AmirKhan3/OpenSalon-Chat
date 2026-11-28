@@ -906,7 +906,7 @@ app.openapi(createStaff, async (c) => {
   const body = c.req.valid("json");
   const result = await run(
     "INSERT INTO staff (name, email, phone, title, color) VALUES (?, ?, ?, ?, ?)",
-    [body.name, body.email || "", body.phone || "", body.title || "", body.color || "#7c3aed"],
+    [body.name, body.email || "", body.phone || "", body.title || "", body.color || "#3a4a5c"],
   );
   const staff = await get<any>("SELECT * FROM staff WHERE id = ?", [result.lastInsertRowid]);
   return c.json({ staff }, 201);
@@ -994,7 +994,7 @@ app.openapi(createService, async (c) => {
   const body = c.req.valid("json");
   const result = await run(
     "INSERT INTO services (name, description, duration, price, color, category) VALUES (?, ?, ?, ?, ?, ?)",
-    [body.name, body.description || "", body.duration || 60, body.price || 0, body.color || "#6b7280", body.category || ""],
+    [body.name, body.description || "", body.duration || 60, body.price || 0, body.color || "#6f665c", body.category || ""],
   );
   const service = await get<any>("SELECT * FROM services WHERE id = ?", [result.lastInsertRowid]);
   return c.json({ service }, 201);

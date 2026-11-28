@@ -7,9 +7,9 @@ import {
 } from "./dates";
 import { ManagePage } from "./manage";
 import { ChatButton } from "./chat";
+import { bookSteps, soloBarber } from "../lib/solo";
 
 type Step = "services" | "barber" | "time" | "details" | "done";
-const STEPS: Step[] = ["services", "barber", "time", "details"];
 const TITLES: Record<Step, string> = {
   services: "What are you getting?",
   barber: "Who do you want?",
@@ -79,7 +79,7 @@ function BookingFlow() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [step, setStep] = useState<Step>("services");
   const [serviceIds, setServiceIds] = useState<number[]>([]);
-  const [barberId, setBarberId] = useState<number | null>(null); // null is "Any barber"
+  const [pickedBarber, setBarberId] = useState<number | null>(null); // null is "Any barber"
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [result, setResult] = useState<BookingData | null>(null);
@@ -124,7 +124,10 @@ function BookingFlow() {
 
   if (step === "done" && result) return <Done data={result} />;
 
-  const index = STEPS.indexOf(step);
+  // A shop with one barber skips "Who do you want?" and books with that barber.
+  const STEPS: Step[] = bookSteps(data.barbers.length);
+  const barberId = soloBarber(data.barbers)?.id ?? pickedBarber;
+  const index = Math.max(0, STEPS.indexOf(step));
   const back = () => { setNotice(null); setStep(STEPS[Math.max(0, index - 1)]); };
   const barber = data.barbers.find((b) => b.id === barberId) ?? null;
 
@@ -154,7 +157,7 @@ function BookingFlow() {
           <ServiceStep
             services={data.services} selected={serviceIds} duration={duration} price={price}
             onToggle={(id) => setServiceIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]))}
-            onNext={() => { setTime(""); setStep("barber"); }}
+            onNext={() => { setTime(""); setStep(STEPS[1]); }}
           />
         )}
         {step === "barber" && (

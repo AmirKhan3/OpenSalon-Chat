@@ -1,5 +1,7 @@
 import { useState } from "preact/hooks";
 import { useApp } from "../context";
+import { friendlyDate } from "@/lib/dates";
+import { formatClock } from "@/lib/calendar-slot";
 import { Plus, Search, Trash2 } from "lucide-preact";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { StatusBadge } from "./status-badge";
 import { Pagination } from "./pagination";
 import { CreateAppointment } from "./create-appointment";
+import { DEFAULT_STAFF_COLOR } from "@/lib/palette";
 
 export function AppointmentList() {
   const {
@@ -21,9 +24,9 @@ export function AppointmentList() {
   return (
     <div className="space-y-4 p-4 sm:p-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">Appointments</h1>
+        <h1 className="text-[1.65rem] font-medium leading-tight tracking-tight">Appointments</h1>
         <Button size="sm" className="min-h-11 sm:min-h-0" onClick={() => setShowCreate(true)}>
-          <Plus className="mr-1 h-3.5 w-3.5" /> New Booking
+          <Plus className="mr-1 h-3.5 w-3.5" /> New booking
         </Button>
       </div>
 
@@ -41,18 +44,18 @@ export function AppointmentList() {
         </div>
         <select
           aria-label="Filter appointments by status"
-          className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm sm:h-9 sm:w-auto"
+          className="h-11 w-full rounded-xl border border-input bg-card px-3 text-base sm:h-9 sm:w-auto sm:text-sm"
           value={appointmentsStatusFilter}
           onChange={(e) => setAppointmentsStatusFilter((e.target as HTMLSelectElement).value)}
         >
-          <option value="">All Statuses</option>
+          <option value="">All statuses</option>
           <option value="pending">Waiting for pre-pay</option>
           <option value="booked">Booked</option>
           <option value="confirmed">Confirmed</option>
-          <option value="in_progress">In Progress</option>
+          <option value="in_progress">In progress</option>
           <option value="completed">Completed</option>
           <option value="cancelled">Cancelled</option>
-          <option value="no_show">No Show</option>
+          <option value="no_show">No show</option>
         </select>
       </div>
 
@@ -71,10 +74,10 @@ export function AppointmentList() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-xs text-muted-foreground">{apt.scheduled_date} at {apt.start_time}</p>
+                      <p className="text-xs text-muted-foreground">{friendlyDate(apt.scheduled_date)}, {formatClock(apt.start_time)}</p>
                       <p className="break-words font-medium">{apt.client_name || "—"}</p>
                       <span className="mt-1 flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground">
-                        {apt.staff_name && <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: apt.staff_color || "#7c3aed" }} />}
+                        {apt.staff_name && <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: apt.staff_color || DEFAULT_STAFF_COLOR }} />}
                         <span className="truncate">{apt.staff_name || "—"}</span>
                       </span>
                     </div>
@@ -124,7 +127,7 @@ export function AppointmentList() {
                   <TableCell>{apt.client_name}</TableCell>
                   <TableCell>
                     <span className="flex items-center gap-1.5">
-                      {apt.staff_name && <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: apt.staff_color || "#7c3aed" }} />}
+                      {apt.staff_name && <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: apt.staff_color || DEFAULT_STAFF_COLOR }} />}
                       <span className="text-sm">{apt.staff_name || "—"}</span>
                     </span>
                   </TableCell>
