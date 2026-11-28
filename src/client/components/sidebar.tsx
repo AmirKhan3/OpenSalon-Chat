@@ -1,44 +1,62 @@
-import { AppNav } from "@clawnify/app/client";
 import { useEffect, useState } from "preact/hooks";
-import type { ComponentChildren } from "preact";
 import { useApp } from "../context";
-import { Scissors, Menu, LayoutDashboard, CalendarDays, Clock, Users, UserCog, Sparkles, Package } from "lucide-preact";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Scissors, LayoutDashboard, CalendarDays, Clock, Users, UserCog, Sparkles, Package, LogOut, Settings, Inbox as InboxIcon, Bot, Zap, BarChart3 } from "lucide-preact";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import type { View } from "../types";
+import { api } from "../api";
+
+/** How many chats wait for a barber or have new messages. */
+export function useInboxCount(): { waiting: number; needsYou: boolean } {
+  const [count, setCount] = useState({ waiting: 0, needsYou: false });
+  useEffect(() => {
+    let stop = false;
+    const read = () => api<{ threads: { staff_unread: number; needs_attention: boolean }[]; needs_attention: number }>("GET", "/api/chat/threads")
+      .then((r) => { if (!stop) setCount({ waiting: r.threads.filter((t) => t.staff_unread > 0 || t.needs_attention).length, needsYou: r.needs_attention > 0 }); })
+      .catch(() => { /* the badge is a hint only */ });
+    read();
+    const timer = window.setInterval(read, 15000);
+    return () => { stop = true; window.clearInterval(timer); };
+  }, []);
+  return count;
+}
 
 const navItems: { view: View; path: string; label: string; icon: typeof LayoutDashboard }[] = [
-  { view: "dashboard", path: "/", label: "Dashboard", icon: LayoutDashboard },
+  { view: "dashboard", path: "/", label: "Today", icon: LayoutDashboard },
+  { view: "inbox", path: "/inbox", label: "Inbox", icon: InboxIcon },
+  { view: "assistant", path: "/assistant", label: "Assistant", icon: Bot },
+  { view: "automations", path: "/automations", label: "Automations", icon: Zap },
   { view: "calendar", path: "/calendar", label: "Calendar", icon: CalendarDays },
   { view: "appointments", path: "/appointments", label: "Appointments", icon: Clock },
   { view: "clients", path: "/clients", label: "Clients", icon: Users },
   { view: "staff", path: "/staff", label: "Staff", icon: UserCog },
   { view: "services", path: "/services", label: "Services", icon: Sparkles },
   { view: "products", path: "/products", label: "Products", icon: Package },
+  { view: "reports", path: "/reports", label: "Reports", icon: BarChart3 },
+  { view: "settings", path: "/settings", label: "Settings", icon: Settings },
 ];
 
-function SidebarContent({ currentView, onNavigate, card }: { currentView: View; onNavigate?: () => void; card?: ComponentChildren }) {
+function SidebarContent({ currentView, onNavigate, onLogout }: { currentView: View; onNavigate?: () => void; onLogout?: () => void }) {
   const { navigate, stats } = useApp();
+  const inbox = useInboxCount();
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-sidebar">
+    <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-2 px-4 py-5">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
           <Scissors className="h-4 w-4" />
         </div>
-        <span className="text-base font-semibold text-sidebar-foreground">Salon Manager</span>
+        <span className="text-base font-semibold text-sidebar-foreground">Tolly</span>
       </div>
       <Separator />
       <nav aria-label="Main navigation" className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 py-3">
-        <p className="mb-2 px-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">Menu</p>
+        <p className="mb-2 px-3 text-xs font-medium text-muted-foreground">Menu</p>
         {navItems.map((item) => (
           <button
             key={item.view}
             className={cn(
-              "flex min-h-11 w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-0",
+              "flex min-h-11 w-full items-center gap-3 rounded-full px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-0",
               currentView === item.view
                 ? "bg-sidebar-accent text-sidebar-accent-foreground"
                 : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
@@ -48,6 +66,9 @@ function SidebarContent({ currentView, onNavigate, card }: { currentView: View; 
           >
             <item.icon className="h-4 w-4" />
             <span className="flex-1 text-left">{item.label}</span>
+            {item.view === "inbox" && inbox.waiting > 0 && (
+              <Badge variant={inbox.needsYou ? "destructive" : "default"} className="h-5 px-1.5 text-xs">{inbox.waiting}</Badge>
+            )}
             {item.view === "appointments" && stats.appointments > 0 && (
               <Badge variant="secondary" className="h-5 px-1.5 text-xs">{stats.appointments}</Badge>
             )}
@@ -60,15 +81,25 @@ function SidebarContent({ currentView, onNavigate, card }: { currentView: View; 
           </button>
         ))}
       </nav>
-      {card && <div className="px-2 pb-2">{card}</div>}
+      {onLogout && (
+        <div className="px-2 pb-2">
+          <button
+            className="flex min-h-11 w-full items-center gap-3 rounded-full px-4 py-2 text-sm font-medium text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-0"
+            onClick={onLogout}
+          >
+            <LogOut className="h-4 w-4" />
+            Log out
+          </button>
+        </div>
+      )}
       <Separator />
       <div className="flex items-center justify-around px-4 py-4">
         <div className="text-center">
-          <div className="text-lg font-bold text-sidebar-foreground">{stats.today_appointments}</div>
+          <div className="text-lg font-medium text-sidebar-foreground">{stats.today_appointments}</div>
           <div className="text-xs text-muted-foreground">Today</div>
         </div>
         <div className="text-center">
-          <div className="text-lg font-bold text-sidebar-foreground">{stats.upcoming_appointments}</div>
+          <div className="text-lg font-medium text-sidebar-foreground">{stats.upcoming_appointments}</div>
           <div className="text-xs text-muted-foreground">Upcoming</div>
         </div>
       </div>
@@ -76,57 +107,11 @@ function SidebarContent({ currentView, onNavigate, card }: { currentView: View; 
   );
 }
 
-export function Sidebar({ currentView }: { currentView: View }) {
-  const [open, setOpen] = useState(false);
-  const { navigate, stats } = useApp();
-
-  useEffect(() => {
-    const desktop = window.matchMedia("(min-width: 768px)");
-    const closeOnDesktop = () => { if (desktop.matches) setOpen(false); };
-    const closeOnHistory = () => setOpen(false);
-    desktop.addEventListener("change", closeOnDesktop);
-    window.addEventListener("popstate", closeOnHistory);
-    return () => {
-      desktop.removeEventListener("change", closeOnDesktop);
-      window.removeEventListener("popstate", closeOnHistory);
-    };
-  }, []);
-
-  // One <AppNav>: inside Clawnify the dashboard draws this navigation, and
-  // anywhere else the salon's own sidebar below is drawn from it.
-  const icons = ["home", "calendar-days", "clock", "users", "users", "sparkles", "package"];
-  return <AppNav title="Salon" icon="calendar-days" active={currentView}
-    groups={[{ items: navItems.map((item, index) => ({
-      id: item.view, label: item.label, href: item.path, icon: icons[index],
-      home: item.view === "dashboard",
-      count: item.view === "appointments" ? stats.appointments || undefined
-        : item.view === "clients" ? stats.clients || undefined
-        : item.view === "products" ? stats.low_stock_products || undefined : undefined,
-    })) }]}
-    onNavigate={(item) => navigate(item.href || "/")}
-    standalone={(nav) => (
-    <>
-      <aside className="hidden w-60 shrink-0 border-r md:block">
-        <SidebarContent currentView={currentView} card={nav.card} />
-      </aside>
-      <header className="flex shrink-0 items-center justify-between gap-3 border-b bg-sidebar px-4 py-2 md:hidden">
-        <span className="flex items-center gap-2 text-sm font-semibold">
-          <Scissors className="h-4 w-4 text-primary" />
-          Salon Manager
-        </span>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button variant="outline" className="min-h-11" aria-label="Open navigation menu">
-              <Menu className="h-4 w-4" />
-              Menu
-            </Button>
-          </DialogTrigger>
-          <DialogContent aria-describedby={undefined} className="left-0 top-0 flex h-dvh w-80 max-w-[calc(100%-2rem)] translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0 sm:rounded-none [&>button]:flex [&>button]:h-11 [&>button]:w-11 [&>button]:items-center [&>button]:justify-center [&>button]:right-2 [&>button]:top-3">
-            <DialogTitle className="sr-only">Navigation menu</DialogTitle>
-            <SidebarContent currentView={currentView} onNavigate={() => setOpen(false)} />
-          </DialogContent>
-        </Dialog>
-      </header>
-    </>
-    )} />;
+export function Sidebar({ currentView, onLogout }: { currentView: View; onLogout?: () => void }) {
+  // Phones use the tab bar at the bottom (mobile-nav.tsx). This is the desktop menu.
+  return (
+    <aside className="glass my-3 ml-3 hidden w-60 shrink-0 overflow-hidden rounded-3xl md:block print:hidden">
+      <SidebarContent currentView={currentView} onLogout={onLogout} />
+    </aside>
+  );
 }

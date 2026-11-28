@@ -4,6 +4,7 @@ import type {
   Appointment, Client, Staff, Service, Product, BlockedSlot, Stats, PaginatedState,
   ClientLookup, StaffLookup,
 } from "./types";
+import type { CalendarViewKind } from "./lib/calendar-views";
 
 export interface AppContextValue {
   navigate: (to: string) => void;
@@ -43,6 +44,8 @@ export interface AppContextValue {
   calendarBlocked: BlockedSlot[];
   calendarDate: string;
   setCalendarDate: (date: string) => void;
+  calendarView: CalendarViewKind;
+  setCalendarView: (view: CalendarViewKind) => void;
   addBlockedSlot: (data: { staff_id: number; blocked_date: string; start_time: string; end_time: string; reason?: string; allow_conflict?: boolean }) => Promise<void>;
   deleteBlockedSlot: (id: number) => Promise<void>;
 
@@ -53,6 +56,8 @@ export interface AppContextValue {
   clientsSearch: string;
   setClientsSearch: (s: string) => void;
   addClient: (data: Partial<Client>) => Promise<void>;
+  /** Adds a customer and gives the new record back. */
+  createClient: (data: { name: string; phone?: string }) => Promise<Client>;
   updateClient: (id: number, data: Partial<Client>) => Promise<void>;
   deleteClient: (id: number) => Promise<void>;
   selectedClient: Client | null;

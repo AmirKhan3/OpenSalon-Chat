@@ -1,20 +1,80 @@
-import { createApp, createRoute, z } from "@clawnify/app";
+import { HTTPException } from "hono/http-exception";
+import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { query, get, run } from "./db.js";
 import { findConflicts, describeConflicts, toMinutes, type Busy } from "./scheduling.js";
 import { ensureSeeded } from "./seed.js";
+import { oneAtATime } from "./lock.js";
+import { addMinutes, busyFor, nextIdentifier } from "./booking.js";
+import { registerSettingsRoutes } from "./settings.js";
+import { registerChatRoutes } from "./chat.js";
+import { registerSmsRoutes } from "./sms.js";
+import { registerAutomationRoutes } from "./automations.js";
+import { registerCalendarRoutes } from "./calendar.js";
+import { registerPaymentRoutes } from "./paymentroutes.js";
+import { emitBookingEvent } from "./events.js";
+import { utcStamp } from "./shoptime.js";
+import { registerPublicRoutes } from "./public.js";
+import { registerStripeRoutes, settlePrepayOnStaffChange } from "./prepay.js";
+import { registerAuthRoutes, requireStaff } from "./auth.js";
+import { registerCronRoutes } from "./cron.js";
+import { suggestClients, clientsNamed } from "./clientsuggest.js";
 
-type Env = { Bindings: { DB: D1Database } };
-
-const app = createApp<Env>({
-  title: "OpenSalon",
-  version: "1.0.0",
-  description: "Appointment scheduling and business management for salons, spas, and other appointment-based businesses.",
+const app = new OpenAPIHono({
+  // A request that fails validation gets 400 { error }.
+  defaultHook: (result, c) => {
+    if (!result.success) {
+      const issue = result.error.issues[0];
+      const where = issue?.path?.length ? `${issue.path.join(".")}: ` : "";
+      return c.json({ error: `${where}${issue?.message ?? "Invalid request"}` }, 400);
+    }
+  },
 });
 
-// Seed sample data + the appointment counter rows on the first request an
-// isolate serves. Registered after createApp's `initDB` middleware and before
-// every route, so handlers always see the _meta rows.
-app.use("*", async (_c, next) => {
+app.onError((err, c) => {
+  // Postgres: the row points at something that does not exist / a number is too big.
+  // Hono: a body that is not valid JSON, and similar request problems.
+  if (err instanceof HTTPException && err.status >= 400 && err.status < 500) {
+    return c.json({ error: err.status === 400 ? "The request could not be read. Check the data and try again." : err.message || "Bad request" }, err.status);
+  }
+  const code = (err as { code?: string }).code;
+  if (code === "23503") return c.json({ error: "That client, barber, or service does not exist." }, 400);
+  if (code === "22003") return c.json({ error: "A number is too large." }, 400);
+  // The path can hold a secret token (a manage link, a chat, a calendar feed). Do not log it.
+  const path = c.req.path.replace(/[A-Za-z0-9_-]{20,}/g, "***");
+  console.error("[api]", c.req.method, path, err instanceof Error ? err.message : err);
+  return c.json({ error: "Something went wrong. Please try again." }, 500);
+});
+
+app.notFound((c) => c.json({ error: "Not found" }, 404));
+
+// Staff login. Everything under /api needs it, except the open paths in auth.ts.
+app.use("/api/*", requireStaff);
+registerAuthRoutes(app);
+
+app.doc("/api/openapi.json", {
+  openapi: "3.0.0",
+  info: {
+    title: "Tolly",
+    version: "1.0.0",
+    description: "Booking, scheduling, and shop management for a barbershop.",
+  },
+});
+
+app.get("/api/health", (c) => c.json({ ok: true }));
+
+// The every-minute work, for hosts with no timer (Vercel). Needs CRON_SECRET.
+registerCronRoutes(app);
+
+// Booking writes check for overlaps and then save. Run them one at a time,
+// so two requests at the same moment cannot both take the same slot.
+app.use("/api/*", async (c, next) => {
+  const write = c.req.method !== "GET" && /^\/api\/(appointments|blocked-slots|public\/bookings|stripe\/webhook)(\/|$)/.test(c.req.path);
+  if (write) await oneAtATime(next);
+  else await next();
+});
+
+// Sample data + the appointment counter rows. Runs once per database.
+app.use("/api/*", async (_c, next) => {
   await ensureSeeded();
   await next();
 });
@@ -137,63 +197,9 @@ const ProductSchema = z.object({
   updated_at: z.string(),
 }).openapi("Product");
 
-const IdParam = z.object({ id: z.string().openapi({ description: "Resource ID" }) });
+const IdParam = z.object({ id: z.string().regex(/^\d{1,9}$/, "Must be a number").openapi({ description: "Resource ID" }) });
 
 // ── Helpers ────────────────────────────────────────────────────────
-
-async function nextIdentifier(): Promise<string> {
-  const prefix = await get<{ value: string }>("SELECT value FROM _meta WHERE key = 'appointment_prefix'");
-  const counter = await get<{ value: string }>("SELECT value FROM _meta WHERE key = 'appointment_counter'");
-  const next = parseInt(counter?.value || "0", 10) + 1;
-  // Upsert, not UPDATE: a plain UPDATE matches zero rows if the counter row is
-  // missing, which would hand out the same identifier forever.
-  await run(
-    "INSERT INTO _meta (key, value) VALUES ('appointment_counter', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-    [String(next)],
-  );
-  return `${prefix?.value || "APT"}-${next}`;
-}
-
-function addMinutes(time: string, minutes: number): string {
-  const [h, m] = time.split(":").map(Number);
-  const total = h * 60 + m + minutes;
-  const hh = Math.floor(total / 60) % 24;
-  const mm = total % 60;
-  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
-}
-
-/**
- * What already occupies `staffId` on `date`: their other appointments, plus any
- * time blocked off for lunch, holiday and the like.
- *
- * Cancelled appointments free the chair, and are the one status left out. That
- * matches what `/api/calendar` draws, so the rule an owner sees is simply
- * "if it is on the calendar, it is taken".
- */
-async function busyFor(staffId: number, date: string, excludeAppointmentId?: number): Promise<Busy[]> {
-  const appts = await query<{ start_time: string; end_time: string; client_name: string | null }>(
-    `SELECT a.start_time, a.end_time, cl.name as client_name
-     FROM appointments a
-     LEFT JOIN clients cl ON cl.id = a.client_id
-     WHERE a.staff_id = ? AND a.scheduled_date = ? AND a.status != 'cancelled'
-       ${excludeAppointmentId ? "AND a.id != ?" : ""}`,
-    excludeAppointmentId ? [staffId, date, excludeAppointmentId] : [staffId, date],
-  );
-  const blocks = await query<{ start_time: string; end_time: string; reason: string | null }>(
-    "SELECT start_time, end_time, reason FROM blocked_slots WHERE staff_id = ? AND blocked_date = ?",
-    [staffId, date],
-  );
-  return [
-    ...appts.map((a): Busy => ({
-      kind: "appointment", start_time: a.start_time, end_time: a.end_time,
-      label: a.client_name || "another booking",
-    })),
-    ...blocks.map((b): Busy => ({
-      kind: "blocked", start_time: b.start_time, end_time: b.end_time,
-      label: b.reason || "blocked",
-    })),
-  ];
-}
 
 /** The staff member's name, for the conflict message. */
 async function staffName(staffId: number): Promise<string> {
@@ -227,16 +233,16 @@ const getStats = createRoute({
 
 app.openapi(getStats, async (c) => {
   const today = new Date().toISOString().split("T")[0];
-  const appointments = await get<{ count: number }>("SELECT COUNT(*) as count FROM appointments");
-  const clients = await get<{ count: number }>("SELECT COUNT(*) as count FROM clients");
-  const staff = await get<{ count: number }>("SELECT COUNT(*) as count FROM staff WHERE active = 1");
-  const services = await get<{ count: number }>("SELECT COUNT(*) as count FROM services WHERE active = 1");
-  const products = await get<{ count: number }>("SELECT COUNT(*) as count FROM products");
-  const todayAppointments = await get<{ count: number }>("SELECT COUNT(*) as count FROM appointments WHERE scheduled_date = ?", [today]);
-  const upcomingAppointments = await get<{ count: number }>("SELECT COUNT(*) as count FROM appointments WHERE status IN ('booked', 'confirmed') AND scheduled_date >= ?", [today]);
-  const completedAppointments = await get<{ count: number }>("SELECT COUNT(*) as count FROM appointments WHERE status = 'completed'");
+  const appointments = await get<{ count: number }>("SELECT COUNT(*)::int as count FROM appointments");
+  const clients = await get<{ count: number }>("SELECT COUNT(*)::int as count FROM clients");
+  const staff = await get<{ count: number }>("SELECT COUNT(*)::int as count FROM staff WHERE active = 1");
+  const services = await get<{ count: number }>("SELECT COUNT(*)::int as count FROM services WHERE active = 1");
+  const products = await get<{ count: number }>("SELECT COUNT(*)::int as count FROM products");
+  const todayAppointments = await get<{ count: number }>("SELECT COUNT(*)::int as count FROM appointments WHERE scheduled_date = ?", [today]);
+  const upcomingAppointments = await get<{ count: number }>("SELECT COUNT(*)::int as count FROM appointments WHERE status IN ('booked', 'confirmed') AND scheduled_date >= ?", [today]);
+  const completedAppointments = await get<{ count: number }>("SELECT COUNT(*)::int as count FROM appointments WHERE status = 'completed'");
   const completedServiceValue = await get<{ total: number }>("SELECT COALESCE(SUM(total_price), 0) as total FROM appointments WHERE status = 'completed'");
-  const lowStock = await get<{ count: number }>("SELECT COUNT(*) as count FROM products WHERE stock <= low_stock_alert");
+  const lowStock = await get<{ count: number }>("SELECT COUNT(*)::int as count FROM products WHERE stock <= low_stock_alert");
   return c.json({
     appointments: appointments?.count || 0,
     clients: clients?.count || 0,
@@ -271,33 +277,38 @@ const listAppointments = createRoute({
       description: "Paginated appointment list",
       content: { "application/json": { schema: z.object({ appointments: z.array(AppointmentSchema), total: z.number().int() }) } },
     },
+    400: { description: "Bad filter", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
 app.openapi(listAppointments, async (c) => {
   const q = c.req.valid("query");
-  const page = parseInt(q.page || "1", 10);
-  const limit = parseInt(q.limit || "50", 10);
+  const page = Math.max(parseInt(q.page || "1", 10) || 1, 1);
+  const limit = Math.min(Math.max(parseInt(q.limit || "50", 10) || 50, 1), 200);
   const offset = (page - 1) * limit;
 
   let where = "WHERE 1=1";
   const params: unknown[] = [];
 
   if (q.search) {
-    where += " AND (a.identifier LIKE ? OR cl.name LIKE ?)";
+    where += " AND (a.identifier ILIKE ? OR cl.name ILIKE ?)";
     const s = `%${q.search}%`;
     params.push(s, s);
   }
   if (q.status) { where += " AND a.status = ?"; params.push(q.status); }
   if (q.date) { where += " AND a.scheduled_date = ?"; params.push(q.date); }
-  if (q.staff_id) { where += " AND a.staff_id = ?"; params.push(q.staff_id); }
+  if (q.staff_id) {
+    if (!/^\d{1,9}$/.test(q.staff_id)) return c.json({ error: "staff_id: Must be a number" }, 400);
+    where += " AND a.staff_id = ?";
+    params.push(Number(q.staff_id));
+  }
 
   const total = await get<{ count: number }>(
-    `SELECT COUNT(*) as count FROM appointments a LEFT JOIN clients cl ON cl.id = a.client_id ${where}`,
+    `SELECT COUNT(*)::int as count FROM appointments a LEFT JOIN clients cl ON cl.id = a.client_id ${where}`,
     params,
   );
 
-  const appointments = await query<Record<string, unknown>>(
+  const appointments = await query<any>(
     `SELECT a.*, cl.name as client_name, cl.phone as client_phone,
             s.name as staff_name, s.color as staff_color
      FROM appointments a
@@ -332,7 +343,7 @@ const getCalendar = createRoute({
 
 app.openapi(getCalendar, async (c) => {
   const { start, end } = c.req.valid("query");
-  const appointments = await query<Record<string, unknown>>(
+  const appointments = await query<any>(
     `SELECT a.*, cl.name as client_name, cl.phone as client_phone,
             s.name as staff_name, s.color as staff_color
      FROM appointments a
@@ -345,7 +356,7 @@ app.openapi(getCalendar, async (c) => {
 
   // Attach services to each appointment
   for (const apt of appointments) {
-    const svcs = await query<Record<string, unknown>>(
+    const svcs = await query<any>(
       `SELECT aps.*, sv.name as service_name FROM appointment_services aps
        LEFT JOIN services sv ON sv.id = aps.service_id
        WHERE aps.appointment_id = ?`,
@@ -354,7 +365,7 @@ app.openapi(getCalendar, async (c) => {
     (apt as Record<string, unknown>).appointment_services = svcs;
   }
 
-  const blocked = await query<Record<string, unknown>>(
+  const blocked = await query<any>(
     `SELECT b.*, s.name as staff_name FROM blocked_slots b
      LEFT JOIN staff s ON s.id = b.staff_id
      WHERE b.blocked_date >= ? AND b.blocked_date <= ?
@@ -380,8 +391,8 @@ const getAppointment = createRoute({
 });
 
 app.openapi(getAppointment, async (c) => {
-  const { id } = c.req.valid("param");
-  const apt = await get<Record<string, unknown>>(
+  const id = Number(c.req.valid("param").id);
+  const apt = await get<any>(
     `SELECT a.*, cl.name as client_name, cl.phone as client_phone,
             s.name as staff_name, s.color as staff_color
      FROM appointments a
@@ -392,7 +403,7 @@ app.openapi(getAppointment, async (c) => {
   );
   if (!apt) return c.json({ error: "Not found" }, 404);
 
-  const svcs = await query<Record<string, unknown>>(
+  const svcs = await query<any>(
     `SELECT aps.*, sv.name as service_name FROM appointment_services aps
      LEFT JOIN services sv ON sv.id = aps.service_id
      WHERE aps.appointment_id = ?`,
@@ -400,7 +411,7 @@ app.openapi(getAppointment, async (c) => {
   );
   apt.appointment_services = svcs;
 
-  const notes = await query<Record<string, unknown>>(
+  const notes = await query<any>(
     "SELECT * FROM appointment_notes WHERE appointment_id = ? ORDER BY created_at DESC",
     [id],
   );
@@ -491,7 +502,7 @@ app.openapi(createAppointment, async (c) => {
     }
   }
 
-  const apt = await get<Record<string, unknown>>(
+  const apt = await get<any>(
     `SELECT a.*, cl.name as client_name, cl.phone as client_phone,
             s.name as staff_name, s.color as staff_color
      FROM appointments a
@@ -501,6 +512,7 @@ app.openapi(createAppointment, async (c) => {
     [aptId],
   );
 
+  await emitBookingEvent("booking_created", Number(aptId));
   return c.json({ appointment: apt }, 201);
 });
 
@@ -533,7 +545,7 @@ const updateAppointment = createRoute({
 });
 
 app.openapi(updateAppointment, async (c) => {
-  const { id } = c.req.valid("param");
+  const id = Number(c.req.valid("param").id);
   const { allow_conflict, ...body } = c.req.valid("json");
 
   const existing = await get<{
@@ -561,6 +573,10 @@ app.openapi(updateAppointment, async (c) => {
     || startTime !== existing.start_time || endTime !== existing.end_time;
   const status = body.status ?? existing.status;
   const restored = existing.status === "cancelled" && status !== "cancelled";
+  // "pending" means a client is paying the pre-pay. Staff cannot set it by hand.
+  if (status === "pending" && existing.status !== "pending") {
+    return c.json({ error: "Only an online booking that waits for its pre-pay can have this status." }, 400);
+  }
 
   // An existing deliberate overlap must not block notes, check-in, completion,
   // or cancellation. Restoring a cancelled booking occupies its slot again.
@@ -571,7 +587,7 @@ app.openapi(updateAppointment, async (c) => {
     if (end <= start) return c.json({ error: "The appointment must end after it starts on the same day" }, 400);
 
     if (status !== "cancelled" && staffId && !allow_conflict) {
-      const conflicts = findConflicts(startTime, endTime, await busyFor(staffId, date, Number(id)));
+      const conflicts = findConflicts(startTime, endTime, await busyFor(staffId, date, id));
       if (conflicts.length > 0) {
         return c.json({ error: describeConflicts(await staffName(staffId), conflicts), conflicts }, 409);
       }
@@ -583,8 +599,12 @@ app.openapi(updateAppointment, async (c) => {
   for (const [key, val] of Object.entries(body)) {
     if (val !== undefined) { sets.push(`${key} = ?`); params.push(val); }
   }
-  sets.push("updated_at = datetime('now')");
+  if (date !== existing.scheduled_date || startTime !== existing.start_time) { sets.push("moved_at = ?"); params.push(utcStamp()); }
+  sets.push("updated_at = utc_now()");
   await run(`UPDATE appointments SET ${sets.join(", ")} WHERE id = ?`, [...params, id]);
+  await settlePrepayOnStaffChange(id, existing.status, status);
+  if (status === "cancelled" && existing.status !== "cancelled") await emitBookingEvent("booking_cancelled", id);
+  else if (status !== "cancelled" && (date !== existing.scheduled_date || startTime !== existing.start_time)) await emitBookingEvent("booking_moved", id);
   return c.json({ ok: true }, 200);
 });
 
@@ -593,11 +613,22 @@ const deleteAppointment = createRoute({
   method: "delete",
   path: "/api/appointments/{id}",
   request: { params: IdParam },
-  responses: { 200: { description: "Deleted", content: { "application/json": { schema: OkSchema } } } },
+  responses: {
+    200: { description: "Deleted", content: { "application/json": { schema: OkSchema } } },
+    400: { description: "Refused", content: { "application/json": { schema: z.object({ error: z.string() }) } } },
+  },
 });
 
 app.openapi(deleteAppointment, async (c) => {
-  const { id } = c.req.valid("param");
+  const id = Number(c.req.valid("param").id);
+  // Money was taken for this booking, or may still come in. Keep it, so the income report and Stripe stay linked.
+  const money = await get<{ n: number }>(
+    `SELECT (SELECT COUNT(*) FROM payments WHERE appointment_id = ?)
+          + (SELECT COUNT(*) FROM appointments WHERE id = ? AND prepay_status IN ('due', 'paid', 'refund_due', 'expired')) AS n`,
+    [id, id]);
+  if (Number(money?.n ?? 0) > 0) {
+    return c.json({ error: "This booking has a payment or a pre-pay. Cancel it instead of deleting it." }, 400);
+  }
   await run("DELETE FROM appointments WHERE id = ?", [id]);
   return c.json({ ok: true }, 200);
 });
@@ -614,7 +645,7 @@ const addAppointmentNote = createRoute({
 });
 
 app.openapi(addAppointmentNote, async (c) => {
-  const { id } = c.req.valid("param");
+  const id = Number(c.req.valid("param").id);
   const { content } = c.req.valid("json");
   await run("INSERT INTO appointment_notes (appointment_id, content) VALUES (?, ?)", [id, content]);
   return c.json({ ok: true }, 201);
@@ -628,7 +659,7 @@ const deleteNote = createRoute({
 });
 
 app.openapi(deleteNote, async (c) => {
-  const { id } = c.req.valid("param");
+  const id = Number(c.req.valid("param").id);
   await run("DELETE FROM appointment_notes WHERE id = ?", [id]);
   return c.json({ ok: true }, 200);
 });
@@ -655,21 +686,21 @@ const listClients = createRoute({
 
 app.openapi(listClients, async (c) => {
   const q = c.req.valid("query");
-  const page = parseInt(q.page || "1", 10);
-  const limit = parseInt(q.limit || "50", 10);
+  const page = Math.max(parseInt(q.page || "1", 10) || 1, 1);
+  const limit = Math.min(Math.max(parseInt(q.limit || "50", 10) || 50, 1), 200);
   const offset = (page - 1) * limit;
 
   let where = "WHERE 1=1";
   const params: unknown[] = [];
   if (q.search) {
-    where += " AND (c.name LIKE ? OR c.email LIKE ? OR c.phone LIKE ?)";
+    where += " AND (c.name ILIKE ? OR c.email ILIKE ? OR c.phone ILIKE ?)";
     const s = `%${q.search}%`;
     params.push(s, s, s);
   }
 
-  const total = await get<{ count: number }>(`SELECT COUNT(*) as count FROM clients c ${where}`, params);
-  const clients = await query<Record<string, unknown>>(
-    `SELECT c.*, (SELECT COUNT(*) FROM appointments WHERE client_id = c.id) as appointment_count
+  const total = await get<{ count: number }>(`SELECT COUNT(*)::int as count FROM clients c ${where}`, params);
+  const clients = await query<any>(
+    `SELECT c.*, (SELECT COUNT(*)::int FROM appointments WHERE client_id = c.id) as appointment_count
      FROM clients c ${where} ORDER BY c.name ASC LIMIT ? OFFSET ?`,
     [...params, limit, offset],
   );
@@ -693,6 +724,24 @@ app.openapi(getAllClients, async (c) => {
   return c.json({ clients }, 200);
 });
 
+const suggestClientsRoute = createRoute({
+  method: "get",
+  path: "/api/clients/suggest",
+  request: { query: z.object({ q: z.string().max(200).optional(), exact: z.enum(["1"]).optional() }) },
+  responses: {
+    200: {
+      description: "Up to 3 customers for the booking form: recent ones, or ones that match the typed name. With exact=1: only customers with that whole name",
+      content: { "application/json": { schema: z.object({ clients: z.array(z.object({ id: z.number().int(), name: z.string(), phone: z.string() })) }) } },
+    },
+  },
+});
+
+app.openapi(suggestClientsRoute, async (c) => {
+  const { q = "", exact } = c.req.valid("query");
+  const clients = exact ? await clientsNamed(q) : await suggestClients(q);
+  return c.json({ clients }, 200);
+});
+
 const getClient = createRoute({
   method: "get",
   path: "/api/clients/{id}",
@@ -707,19 +756,15 @@ const getClient = createRoute({
 });
 
 app.openapi(getClient, async (c) => {
-  const { id } = c.req.valid("param");
-  const client = await get<Record<string, unknown>>("SELECT * FROM clients WHERE id = ?", [id]);
+  const id = Number(c.req.valid("param").id);
+  const client = await get<any>("SELECT * FROM clients WHERE id = ?", [id]);
   if (!client) return c.json({ error: "Not found" }, 404);
-  const appointments = await query<Record<string, unknown>>(
+  const appointments = await query<any>(
     `SELECT a.*, s.name as staff_name, s.color as staff_color,
-            (SELECT GROUP_CONCAT(name, ', ')
-             FROM (
-               SELECT sv.name
-               FROM appointment_services aps
-               JOIN services sv ON sv.id = aps.service_id
-               WHERE aps.appointment_id = a.id
-               ORDER BY aps.id
-             )) as service_names,
+            (SELECT string_agg(sv.name, ', ' ORDER BY aps.id)
+             FROM appointment_services aps
+             JOIN services sv ON sv.id = aps.service_id
+             WHERE aps.appointment_id = a.id) as service_names,
             (SELECT an.content
              FROM appointment_notes an
              WHERE an.appointment_id = a.id
@@ -752,7 +797,7 @@ app.openapi(createClient, async (c) => {
     "INSERT INTO clients (name, email, phone, notes) VALUES (?, ?, ?, ?)",
     [body.name, body.email || "", body.phone || "", body.notes || ""],
   );
-  const client = await get<Record<string, unknown>>("SELECT * FROM clients WHERE id = ?", [result.lastInsertRowid]);
+  const client = await get<any>("SELECT * FROM clients WHERE id = ?", [result.lastInsertRowid]);
   return c.json({ client }, 201);
 });
 
@@ -772,7 +817,7 @@ const updateClient = createRoute({
 });
 
 app.openapi(updateClient, async (c) => {
-  const { id } = c.req.valid("param");
+  const id = Number(c.req.valid("param").id);
   const body = c.req.valid("json");
   const sets: string[] = [];
   const params: unknown[] = [];
@@ -780,7 +825,7 @@ app.openapi(updateClient, async (c) => {
     if (val !== undefined) { sets.push(`${key} = ?`); params.push(val); }
   }
   if (sets.length > 0) {
-    sets.push("updated_at = datetime('now')");
+    sets.push("updated_at = utc_now()");
     await run(`UPDATE clients SET ${sets.join(", ")} WHERE id = ?`, [...params, id]);
   }
   return c.json({ ok: true }, 200);
@@ -794,7 +839,7 @@ const deleteClient = createRoute({
 });
 
 app.openapi(deleteClient, async (c) => {
-  const { id } = c.req.valid("param");
+  const id = Number(c.req.valid("param").id);
   await run("DELETE FROM clients WHERE id = ?", [id]);
   return c.json({ ok: true }, 200);
 });
@@ -813,10 +858,10 @@ const listStaff = createRoute({
 });
 
 app.openapi(listStaff, async (c) => {
-  const staff = await query<Record<string, unknown>>(
+  const staff = await query<any>(
     `SELECT s.*,
-            COUNT(a.id) as appointment_count,
-            COALESCE(SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END), 0) as completed_appointment_count,
+            COUNT(a.id)::int as appointment_count,
+            COALESCE(SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END), 0)::int as completed_appointment_count,
             COALESCE(SUM(CASE WHEN a.status = 'completed' THEN a.total_price ELSE 0 END), 0) as completed_service_value
      FROM staff s
      LEFT JOIN appointments a ON a.staff_id = s.id
@@ -861,9 +906,9 @@ app.openapi(createStaff, async (c) => {
   const body = c.req.valid("json");
   const result = await run(
     "INSERT INTO staff (name, email, phone, title, color) VALUES (?, ?, ?, ?, ?)",
-    [body.name, body.email || "", body.phone || "", body.title || "", body.color || "#7c3aed"],
+    [body.name, body.email || "", body.phone || "", body.title || "", body.color || "#3a4a5c"],
   );
-  const staff = await get<Record<string, unknown>>("SELECT * FROM staff WHERE id = ?", [result.lastInsertRowid]);
+  const staff = await get<any>("SELECT * FROM staff WHERE id = ?", [result.lastInsertRowid]);
   return c.json({ staff }, 201);
 });
 
@@ -885,7 +930,7 @@ const updateStaff = createRoute({
 });
 
 app.openapi(updateStaff, async (c) => {
-  const { id } = c.req.valid("param");
+  const id = Number(c.req.valid("param").id);
   const body = c.req.valid("json");
   const sets: string[] = [];
   const params: unknown[] = [];
@@ -902,11 +947,28 @@ const deleteStaff = createRoute({
   method: "delete",
   path: "/api/staff/{id}",
   request: { params: IdParam },
-  responses: { 200: { description: "Deleted", content: { "application/json": { schema: OkSchema } } } },
+  responses: {
+    200: { description: "Deleted", content: { "application/json": { schema: OkSchema } } },
+    409: { description: "This barber cannot be deleted", content: { "application/json": { schema: z.object({ error: z.string() }) } } },
+  },
 });
 
 app.openapi(deleteStaff, async (c) => {
-  const { id } = c.req.valid("param");
+  const id = Number(c.req.valid("param").id);
+  const member = await get<{ name: string }>("SELECT name FROM staff WHERE id = ?", [id]);
+  if (!member) return c.json({ ok: true }, 200);
+  // Bookings and payments must keep their barber's name, for reports and taxes.
+  const used = await get<{ n: number }>(
+    `SELECT (SELECT COUNT(*) FROM appointments WHERE staff_id = ?)::int + (SELECT COUNT(*) FROM payments WHERE staff_id = ?)::int AS n`,
+    [id, id],
+  );
+  if (used && used.n > 0) {
+    return c.json({ error: `${member.name} has bookings or payments. Deactivate them instead. Your records stay whole.` }, 409);
+  }
+  const others = await get<{ n: number }>("SELECT COUNT(*)::int AS n FROM staff WHERE id <> ?", [id]);
+  if (!others || others.n === 0) {
+    return c.json({ error: "This is your only barber. Add another barber before you delete this one." }, 409);
+  }
   await run("DELETE FROM staff WHERE id = ?", [id]);
   return c.json({ ok: true }, 200);
 });
@@ -925,7 +987,7 @@ const listServices = createRoute({
 });
 
 app.openapi(listServices, async (c) => {
-  const services = await query<Record<string, unknown>>("SELECT * FROM services ORDER BY category ASC, name ASC");
+  const services = await query<any>("SELECT * FROM services ORDER BY category ASC, name ASC");
   return c.json({ services }, 200);
 });
 
@@ -949,9 +1011,9 @@ app.openapi(createService, async (c) => {
   const body = c.req.valid("json");
   const result = await run(
     "INSERT INTO services (name, description, duration, price, color, category) VALUES (?, ?, ?, ?, ?, ?)",
-    [body.name, body.description || "", body.duration || 60, body.price || 0, body.color || "#6b7280", body.category || ""],
+    [body.name, body.description || "", body.duration || 60, body.price || 0, body.color || "#6f665c", body.category || ""],
   );
-  const service = await get<Record<string, unknown>>("SELECT * FROM services WHERE id = ?", [result.lastInsertRowid]);
+  const service = await get<any>("SELECT * FROM services WHERE id = ?", [result.lastInsertRowid]);
   return c.json({ service }, 201);
 });
 
@@ -974,7 +1036,7 @@ const updateService = createRoute({
 });
 
 app.openapi(updateService, async (c) => {
-  const { id } = c.req.valid("param");
+  const id = Number(c.req.valid("param").id);
   const body = c.req.valid("json");
   const sets: string[] = [];
   const params: unknown[] = [];
@@ -995,7 +1057,7 @@ const deleteService = createRoute({
 });
 
 app.openapi(deleteService, async (c) => {
-  const { id } = c.req.valid("param");
+  const id = Number(c.req.valid("param").id);
   await run("DELETE FROM services WHERE id = ?", [id]);
   return c.json({ ok: true }, 200);
 });
@@ -1057,7 +1119,7 @@ const deleteBlockedSlot = createRoute({
 });
 
 app.openapi(deleteBlockedSlot, async (c) => {
-  const { id } = c.req.valid("param");
+  const id = Number(c.req.valid("param").id);
   await run("DELETE FROM blocked_slots WHERE id = ?", [id]);
   return c.json({ ok: true }, 200);
 });
@@ -1085,21 +1147,21 @@ const listProducts = createRoute({
 
 app.openapi(listProducts, async (c) => {
   const q = c.req.valid("query");
-  const page = parseInt(q.page || "1", 10);
-  const limit = parseInt(q.limit || "50", 10);
+  const page = Math.max(parseInt(q.page || "1", 10) || 1, 1);
+  const limit = Math.min(Math.max(parseInt(q.limit || "50", 10) || 50, 1), 200);
   const offset = (page - 1) * limit;
 
   let where = "WHERE 1=1";
   const params: unknown[] = [];
   if (q.search) {
-    where += " AND (p.name LIKE ? OR p.brand LIKE ? OR p.sku LIKE ?)";
+    where += " AND (p.name ILIKE ? OR p.brand ILIKE ? OR p.sku ILIKE ?)";
     const s = `%${q.search}%`;
     params.push(s, s, s);
   }
   if (q.category) { where += " AND p.category = ?"; params.push(q.category); }
 
-  const total = await get<{ count: number }>(`SELECT COUNT(*) as count FROM products p ${where}`, params);
-  const products = await query<Record<string, unknown>>(
+  const total = await get<{ count: number }>(`SELECT COUNT(*)::int as count FROM products p ${where}`, params);
+  const products = await query<any>(
     `SELECT * FROM products p ${where} ORDER BY p.name ASC LIMIT ? OFFSET ?`,
     [...params, limit, offset],
   );
@@ -1132,7 +1194,7 @@ app.openapi(createProduct, async (c) => {
     [body.name, body.brand || "", body.category || "", body.sku || "",
     body.price ?? 0, body.cost ?? 0, body.stock ?? 0, body.low_stock_alert ?? 5],
   );
-  const product = await get<Record<string, unknown>>("SELECT * FROM products WHERE id = ?", [result.lastInsertRowid]);
+  const product = await get<any>("SELECT * FROM products WHERE id = ?", [result.lastInsertRowid]);
   return c.json({ product }, 201);
 });
 
@@ -1156,7 +1218,7 @@ const updateProduct = createRoute({
 });
 
 app.openapi(updateProduct, async (c) => {
-  const { id } = c.req.valid("param");
+  const id = Number(c.req.valid("param").id);
   const body = c.req.valid("json");
   const sets: string[] = [];
   const params: unknown[] = [];
@@ -1164,7 +1226,7 @@ app.openapi(updateProduct, async (c) => {
     if (val !== undefined) { sets.push(`${key} = ?`); params.push(val); }
   }
   if (sets.length > 0) {
-    sets.push("updated_at = datetime('now')");
+    sets.push("updated_at = utc_now()");
     await run(`UPDATE products SET ${sets.join(", ")} WHERE id = ?`, [...params, id]);
   }
   return c.json({ ok: true }, 200);
@@ -1178,9 +1240,18 @@ const deleteProduct = createRoute({
 });
 
 app.openapi(deleteProduct, async (c) => {
-  const { id } = c.req.valid("param");
+  const id = Number(c.req.valid("param").id);
   await run("DELETE FROM products WHERE id = ?", [id]);
   return c.json({ ok: true }, 200);
 });
+
+registerSettingsRoutes(app);
+registerPublicRoutes(app);
+registerStripeRoutes(app);
+registerChatRoutes(app);
+registerSmsRoutes(app);
+registerAutomationRoutes(app);
+registerCalendarRoutes(app);
+registerPaymentRoutes(app);
 
 export default app;

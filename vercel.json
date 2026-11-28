@@ -1,0 +1,30 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "buildCommand": "pnpm build",
+  "outputDirectory": "dist",
+  "functions": {
+    "api/index.ts": {
+      "includeFiles": "src/server/schema.sql",
+      "maxDuration": 300
+    },
+    "api/tick.ts": {
+      "includeFiles": "src/server/schema.sql",
+      "maxDuration": 300,
+      "experimentalTriggers": [{ "type": "schedule/v1beta" }]
+    }
+  },
+  "schedules": {
+    "tick": {
+      "schedule": "*/15 * * * *",
+      "function": "api/tick"
+    }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api" },
+    { "source": "/book", "destination": "/book.html" },
+    { "source": "/book/(.*)", "destination": "/book.html" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ]
+}

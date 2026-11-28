@@ -3,7 +3,7 @@ import { useApp } from "../context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { FormPage } from "./form-page";
 import type { Product } from "../types";
 
 function numberOr(value: string, fallback: number): number {
@@ -47,11 +47,14 @@ export function CreateProduct({ onClose, product }: { onClose: () => void; produ
   };
 
   return (
-    <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>{isEditing ? "Edit Product" : "Add Product"}</DialogTitle>
-        </DialogHeader>
+    <FormPage
+      title={isEditing ? "Edit Product" : "Add Product"}
+      onClose={onClose}
+      footer={<>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button disabled={saving} onClick={handleSubmit}>{saving ? "Saving..." : isEditing ? "Save Changes" : "Add Product"}</Button>
+      </>}
+    >
         <div className="space-y-3">
           <div className="space-y-1.5">
             <Label htmlFor="product-name">Name *</Label>
@@ -92,11 +95,6 @@ export function CreateProduct({ onClose, product }: { onClose: () => void; produ
             </div>
           </div>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button disabled={saving} onClick={handleSubmit}>{saving ? "Saving..." : isEditing ? "Save Changes" : "Add Product"}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    </FormPage>
   );
 }

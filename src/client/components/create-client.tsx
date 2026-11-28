@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { FormPage } from "./form-page";
 
 export function CreateClient({ onClose }: { onClose: () => void }) {
   const { addClient, setError } = useApp();
@@ -28,11 +28,14 @@ export function CreateClient({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Add Client</DialogTitle>
-        </DialogHeader>
+    <FormPage
+      title="Add Client"
+      onClose={onClose}
+      footer={<>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button disabled={saving} onClick={handleSubmit}>{saving ? "Saving..." : "Add Client"}</Button>
+      </>}
+    >
         <div className="space-y-3">
           <div className="space-y-1.5">
             <Label>Name *</Label>
@@ -53,11 +56,6 @@ export function CreateClient({ onClose }: { onClose: () => void }) {
             <Textarea rows={2} value={notes} onChange={(e) => setNotes((e.target as HTMLTextAreaElement).value)} placeholder="Preferences, allergies, etc." />
           </div>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button disabled={saving} onClick={handleSubmit}>{saving ? "Saving..." : "Add Client"}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    </FormPage>
   );
 }

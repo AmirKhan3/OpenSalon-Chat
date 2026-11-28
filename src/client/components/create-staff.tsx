@@ -3,9 +3,10 @@ import { useApp } from "../context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { FormPage } from "./form-page";
+import { SWATCHES } from "@/lib/palette";
 
-const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#ef4444", "#14b8a6", "#f97316"];
+const COLORS: readonly string[] = SWATCHES;
 
 export function CreateStaff({ onClose }: { onClose: () => void }) {
   const { addStaff, setError } = useApp();
@@ -30,11 +31,14 @@ export function CreateStaff({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Add Staff Member</DialogTitle>
-        </DialogHeader>
+    <FormPage
+      title="Add Staff Member"
+      onClose={onClose}
+      footer={<>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button disabled={saving} onClick={handleSubmit}>{saving ? "Saving..." : "Add Staff"}</Button>
+      </>}
+    >
         <div className="space-y-3">
           <div className="space-y-1.5">
             <Label>Name *</Label>
@@ -68,11 +72,6 @@ export function CreateStaff({ onClose }: { onClose: () => void }) {
             </div>
           </div>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button disabled={saving} onClick={handleSubmit}>{saving ? "Saving..." : "Add Staff"}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    </FormPage>
   );
 }

@@ -4,9 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { FormPage } from "./form-page";
+import { SWATCHES } from "@/lib/palette";
 
-const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#ef4444", "#14b8a6", "#6b7280"];
+const COLORS: readonly string[] = SWATCHES;
 
 export function CreateService({ onClose }: { onClose: () => void }) {
   const { addService, setError } = useApp();
@@ -32,11 +33,14 @@ export function CreateService({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Add Service</DialogTitle>
-        </DialogHeader>
+    <FormPage
+      title="Add Service"
+      onClose={onClose}
+      footer={<>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button disabled={saving} onClick={handleSubmit}>{saving ? "Saving..." : "Add Service"}</Button>
+      </>}
+    >
         <div className="space-y-3">
           <div className="space-y-1.5">
             <Label>Name *</Label>
@@ -74,11 +78,6 @@ export function CreateService({ onClose }: { onClose: () => void }) {
             </div>
           </div>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button disabled={saving} onClick={handleSubmit}>{saving ? "Saving..." : "Add Service"}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    </FormPage>
   );
 }

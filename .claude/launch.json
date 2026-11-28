@@ -1,0 +1,18 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "tolly-dev", "runtimeExecutable": "sh", "runtimeArgs": ["-c", "PORT=8787 pnpm dev"], "port": 5173 },
+    {
+      "name": "tolly-sandbox",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "PORT=8787 DATABASE_URL=pglite:memory SEED_DEMO_DATA=true SEED_DEMO_CHATS=true STAFF_PASSWORD= SMS_PROVIDER= TELNYX_API_KEY= TWILIO_ACCOUNT_SID= TWILIO_AUTH_TOKEN= STRIPE_SECRET_KEY= AI_GATEWAY_API_KEY= ANTHROPIC_API_KEY= pnpm dev"],
+      "port": 5173
+    },
+    {
+      "name": "tolly-sandbox-ai",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "set -a; . ./.env.sandbox; set +a; PORT=8787 DATABASE_URL=pglite:memory SEED_DEMO_DATA=true SEED_DEMO_CHATS=true STAFF_PASSWORD= SMS_PROVIDER= TELNYX_API_KEY= TWILIO_ACCOUNT_SID= TWILIO_AUTH_TOKEN= STRIPE_SECRET_KEY= AI_GATEWAY_API_KEY= ANTHROPIC_API_KEY= pnpm dev"],
+      "port": 5173
+    }
+  ]
+}

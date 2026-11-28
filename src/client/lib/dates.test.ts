@@ -60,3 +60,47 @@ test("parseDate round-trips through formatDate", () => {
     });
   }
 });
+
+test("a week runs Sunday to Saturday around the date", async () => {
+  const { weekOf } = await import("./dates.ts");
+  assert.deepEqual(weekOf("2026-11-27"), ["2026-11-22", "2026-11-23", "2026-11-24", "2026-11-25", "2026-11-26", "2026-11-27", "2026-11-28"]);
+  assert.equal(weekOf("2026-11-22")[0], "2026-11-22");
+  assert.equal(weekOf("2026-11-28")[6], "2026-11-28");
+  // A week can cross a month and a year.
+  assert.deepEqual(weekOf("2027-01-01").slice(0, 2), ["2026-12-27", "2026-12-28"]);
+});
+
+test("months shift to the first day, across years", async () => {
+  const { shiftMonth } = await import("./dates.ts");
+  assert.equal(shiftMonth("2026-11-27", 0), "2026-11-01");
+  assert.equal(shiftMonth("2026-11-27", 2), "2027-01-01");
+  assert.equal(shiftMonth("2026-01-31", -1), "2025-12-01");
+  assert.equal(shiftMonth("2026-01-31", 1), "2026-02-01");
+});
+
+test("a month grid holds whole weeks that cover the month", async () => {
+  const { monthGrid } = await import("./dates.ts");
+  const november = monthGrid("2026-11-27");
+  assert.equal(november.length, 5);
+  assert.equal(november[0][0], "2026-11-01");
+  assert.equal(november[4][6], "2026-12-05");
+  // February 2026 starts on a Sunday and fits four weeks.
+  assert.equal(monthGrid("2026-02-10").length, 4);
+  // August 2026 starts on a Saturday and needs six.
+  const august = monthGrid("2026-08-15");
+  assert.equal(august.length, 6);
+  assert.equal(august[0][6], "2026-08-01");
+  assert.ok(august[5].includes("2026-08-31"));
+  for (const week of august) assert.equal(week.length, 7);
+});
+
+test("a friendly date is short, and shows the year only when it is not this year", async () => {
+  const { friendlyDate } = await import("./dates.ts");
+  const now = new Date(2026, 10, 27, 9);
+  assert.equal(friendlyDate("2026-11-27", now), "Fri, Nov 27");
+  assert.equal(friendlyDate("2026-01-05", now), "Mon, Jan 5");
+  assert.equal(friendlyDate("2027-01-02", now), "Sat, Jan 2, 2027");
+  assert.equal(friendlyDate("2025-12-31", now), "Wed, Dec 31, 2025");
+  // Text that is not a date is shown as it is.
+  assert.equal(friendlyDate("soon", now), "soon");
+});

@@ -4,3 +4,8 @@ data.db
 .DS_Store
 *.log
 .vite
+.data
+.env
+.env.local
+.vercel
+.env*

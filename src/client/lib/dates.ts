@@ -40,3 +40,39 @@ export function shiftDate(date: string, days: number): string {
   d.setDate(d.getDate() + days);
   return formatDate(d);
 }
+
+/** The seven days, Sunday to Saturday, of the week that holds this date. */
+export function weekOf(date: string): string[] {
+  const sunday = shiftDate(date, -parseDate(date).getDay());
+  return Array.from({ length: 7 }, (_, i) => shiftDate(sunday, i));
+}
+
+/** The first day of the month that is `months` away from this date's month. */
+export function shiftMonth(date: string, months: number): string {
+  const d = parseDate(date);
+  return formatDate(new Date(d.getFullYear(), d.getMonth() + months, 1, 12));
+}
+
+/** Every week, Sunday to Saturday, that holds a day of this date's month. */
+export function monthGrid(date: string): string[][] {
+  const d = parseDate(date);
+  const last = formatDate(new Date(d.getFullYear(), d.getMonth() + 1, 0, 12));
+  const weeks: string[][] = [];
+  let week = weekOf(shiftMonth(date, 0));
+  for (;;) {
+    weeks.push(week);
+    if (week.includes(last)) return weeks;
+    week = weekOf(shiftDate(week[0], 7));
+  }
+}
+
+/**
+ * A day people can read at a glance, like "Fri, Nov 27".
+ * The year is added when it is not the current one: "Sat, Jan 2, 2027".
+ */
+export function friendlyDate(date: string, now: Date = new Date()): string {
+  const d = parseDate(date);
+  if (Number.isNaN(d.getTime())) return date;
+  const text = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  return d.getFullYear() === now.getFullYear() ? text : `${text}, ${d.getFullYear()}`;
+}

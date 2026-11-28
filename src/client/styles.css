@@ -1,6 +1,39 @@
 @import "tailwindcss";
+@import "konsta/react/theme.css";
+/* Allo by Josh Puckett: a rounded typeface that began from Inter. The files
+   ship with the app (SIL Open Font License 1.1), so no font host is needed. */
+@import "allo-font/allo.css";
 
 @custom-variant dark (&:is(.dark *));
+
+/* Colors
+   The palette comes from barbershop photos: charcoal and black-and-white
+   prints, clipper steel, bone towels and old paper, brass fittings,
+   bottle-green walls, and the red and blue of the barber pole.
+
+   Use the semantic names in components (bg-primary, text-success,
+   bg-warning-soft and so on). Do not write hex codes or Tailwind color
+   names such as amber-500 in components. Colors that are saved as data
+   (staff and service swatches) are in src/client/lib/palette.ts.
+
+   Konsta UI takes its main color from --color-brand-primary. Keep it the
+   same as --primary below. */
+@theme {
+  --color-brand-primary: #3a4a5c;
+  --shadow-soft: 0 1px 2px rgba(48, 33, 20, 0.04), 0 8px 24px rgba(48, 33, 20, 0.07);
+  --shadow-float: 0 2px 6px rgba(48, 33, 20, 0.07), 0 12px 32px rgba(48, 33, 20, 0.13);
+  --shadow-chip: 0 1px 3px rgba(48, 33, 20, 0.1);
+  --shadow-action: 0 6px 20px rgba(40, 52, 63, 0.35);
+  /* Liquid glass. A thin bright rim on top, a faint dark rim below, and a
+     wide soft shadow, so the piece reads as a clear slab floating over the
+     page. Pressed glass loses most of its lift. */
+  --shadow-glass: 0 1px 2px var(--glass-cast-near), 0 12px 32px -8px var(--glass-cast);
+  --inset-shadow-glass: inset 0 1px 0 var(--glass-glint), inset 0 -1px 0 var(--glass-rim), inset 0 0 0 1px var(--glass-edge);
+  --shadow-glass-btn: 0 1px 2px var(--glass-cast-near), 0 6px 16px -6px var(--glass-cast);
+  --shadow-glass-pressed: 0 1px 2px var(--glass-cast-near);
+  --shadow-glass-tint: 0 1px 2px var(--glass-cast-near), 0 10px 22px -8px var(--glass-tint-cast);
+  --inset-shadow-glass-tint: inset 0 1px 0 var(--glass-tint-glint), inset 0 -1px 0 var(--glass-tint-rim), inset 0 0 0 1px var(--glass-tint-edge);
+}
 
 @theme inline {
   --color-background: var(--background);
@@ -19,6 +52,25 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-primary-strong: var(--primary-strong);
+  --color-bubble: var(--bubble);
+  --color-wash: var(--wash);
+  --color-hairline: var(--hairline);
+  --color-overlay: var(--overlay);
+  --color-press: var(--press);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-border: var(--warning-border);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-foreground: var(--danger-foreground);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-info-foreground: var(--info-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -42,39 +94,375 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.45 0.18 277);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.965 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.965 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.965 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.45 0.18 277);
-  --radius: 0.625rem;
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.45 0.18 277);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.965 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.45 0.18 277);
+  /* Surfaces: bone page, white cards, towel-tan wash at the bottom. */
+  --background: #fbf8f3;
+  --card: #ffffff;
+  --popover: #ffffff;
+  --wash: #efe4d3;
+  --muted: #f2ece3;
+  --secondary: #f2ece3;
+  --accent: #f2ece3;
+  --bubble: #f1dfca;
+
+  /* Text: charcoal ink, warm grey for help text. */
+  --foreground: #1d1916;
+  --card-foreground: #1d1916;
+  --popover-foreground: #1d1916;
+  --secondary-foreground: #1d1916;
+  --accent-foreground: #1d1916;
+  --muted-foreground: #665a4e;
+
+  /* Liquid glass: the layer of controls that floats over the page (tab bar,
+     sidebar, menus, pop-ups, buttons). Never use it for content such as
+     cards and lists. Use the glass classes, not these one by one. */
+  --glass-fill: rgba(255, 255, 255, 0.56); /* bars and floating chips */
+  --glass-fill-thick: rgba(255, 255, 255, 0.8); /* menus and pop-ups: lots of text */
+  --glass-fill-btn: rgba(255, 255, 255, 0.46);
+  --glass-fill-solid: #ffffff; /* when the device cannot blur, or the person asks for less see-through */
+  --glass-blur: 18px;
+  --glass-saturate: 180%;
+  --glass-glint: rgba(255, 255, 255, 0.9);
+  --glass-edge: rgba(255, 255, 255, 0.35);
+  --glass-rim: rgba(34, 38, 44, 0.08);
+  --glass-outline: rgba(34, 38, 44, 0.1);
+  --glass-cast: rgba(34, 38, 44, 0.28);
+  --glass-cast-near: rgba(34, 38, 44, 0.08);
+  --glass-glare: rgba(255, 255, 255, 0.5);
+  /* Tinted glass: the one main action on a screen. Steel shows through. */
+  --glass-tint: rgba(58, 74, 92, 0.86);
+  --glass-tint-solid: var(--primary);
+  --glass-tint-foreground: #ffffff;
+  --glass-tint-glint: rgba(255, 255, 255, 0.45);
+  --glass-tint-edge: rgba(255, 255, 255, 0.12);
+  --glass-tint-rim: rgba(13, 14, 16, 0.25);
+  --glass-tint-glare: rgba(255, 255, 255, 0.24);
+  --glass-tint-cast: rgba(40, 52, 63, 0.55);
+
+  /* Type: how round the letters are. 0 is sharp, 100 is fully round. */
+  --type-roundness: 65;
+
+  /* Accent: blued steel, like clipper blades. Links, selected things and small marks. */
+  --primary: #3a4a5c;
+  --primary-strong: #28343f;
+  --primary-foreground: #ffffff;
+  --ring: #3a4a5c;
+
+  /* Lines. */
+  --border: #e7dfd3;
+  --input: #ddd2c2;
+  --hairline: rgba(48, 33, 20, 0.06);
+  --overlay: rgba(20, 15, 11, 0.7);
+  --press: rgba(48, 33, 20, 0.1);
+
+  /* Status. Each has a strong color, a soft fill, and text for the soft fill. */
+  --success: #1e6650; /* bottle green: active, paid, online */
+  --success-soft: #dfeee7;
+  --success-foreground: #174f3e;
+  --warning: #8a5a00; /* brass: notices, low stock, staff-only notes */
+  --warning-soft: #f8ecd0;
+  --warning-border: #dcc27e;
+  --warning-foreground: #6b4500;
+  --danger: #b3261e; /* barber-pole red: cancelled, delete, needs you */
+  --danger-soft: #fae4e1;
+  --danger-foreground: #8c1d17;
+  --info: #23508f; /* barber-pole blue: neutral facts */
+  --info-soft: #e2eaf5;
+  --info-foreground: #1b3f72;
+  --destructive: var(--danger);
+  --destructive-foreground: #ffffff;
+
+  --radius: 1rem;
+  --chart-1: #3a4a5c;
+  --chart-2: #1e6650;
+  --chart-3: #23508f;
+  --chart-4: #c4912f;
+  --chart-5: #b3261e;
+  --sidebar: #f6f1e9;
+  --sidebar-foreground: #1d1916;
+  --sidebar-primary: #3a4a5c;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #ece3d6;
+  --sidebar-accent-foreground: #1d1916;
+  --sidebar-border: #e7dfd3;
+  --sidebar-ring: #3a4a5c;
+}
+
+/* Liquid glass, after Apple's material of the same name. Built with a
+   background blur, so it works in every current browser. Each class sets
+   --glass-bg (see-through) and --glass-bg-solid (the fallback). */
+
+/* Bars and floating chips: the tab bar, the sidebar, the chat box. */
+@utility glass {
+  --glass-bg: var(--glass-fill);
+  --glass-bg-solid: var(--glass-fill-solid);
+  @apply shadow-glass inset-shadow-glass;
+  border: 1px solid var(--glass-outline);
+  background-color: var(--glass-bg);
+  background-image: linear-gradient(180deg, var(--glass-glare) 0%, transparent 45%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+/* Menus and pop-ups. Less see-through, because they hold a lot of text. */
+@utility glass-thick {
+  --glass-bg: var(--glass-fill-thick);
+  --glass-bg-solid: var(--glass-fill-solid);
+  @apply shadow-glass inset-shadow-glass;
+  border: 1px solid var(--glass-outline);
+  background-color: var(--glass-bg);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+/* A button: a clear glass pill. It dips a little when pressed. */
+@utility glass-btn {
+  --glass-bg: var(--glass-fill-btn);
+  --glass-bg-solid: var(--glass-fill-solid);
+  @apply text-foreground shadow-glass-btn inset-shadow-glass active:shadow-glass-pressed;
+  border: 1px solid var(--glass-outline);
+  background-color: var(--glass-bg);
+  background-image: linear-gradient(180deg, var(--glass-glare) 0%, transparent 50%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  transition: box-shadow 150ms ease-out, filter 150ms ease-out, transform 150ms ease-out;
+  &:hover {
+    filter: brightness(1.03);
+  }
+  &:active {
+    transform: scale(0.97);
+    filter: brightness(0.96);
+  }
+}
+
+/* The main action on a screen: glass tinted with the accent color. */
+@utility glass-tint {
+  --glass-bg: var(--glass-tint);
+  --glass-bg-solid: var(--glass-tint-solid);
+  @apply shadow-glass-tint inset-shadow-glass-tint active:shadow-glass-pressed;
+  color: var(--glass-tint-foreground);
+  border: 1px solid transparent;
+  background-color: var(--glass-bg);
+  background-image: linear-gradient(180deg, var(--glass-tint-glare) 0%, transparent 55%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  transition: box-shadow 150ms ease-out, filter 150ms ease-out, transform 150ms ease-out;
+  &:hover {
+    filter: brightness(1.08);
+  }
+  &:active {
+    transform: scale(0.97);
+    filter: brightness(0.94);
+  }
+}
+
+/* No see-through glass when the browser cannot blur, or when the person
+   has asked their device for less transparency or more contrast. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass,
+  .glass-thick,
+  .glass-btn,
+  .glass-tint {
+    background-color: var(--glass-bg-solid);
+  }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .glass,
+  .glass-thick,
+  .glass-btn,
+  .glass-tint {
+    background-color: var(--glass-bg-solid);
+    background-image: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+@media (prefers-contrast: more) {
+  .glass,
+  .glass-thick,
+  .glass-btn {
+    border-color: var(--foreground);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .glass-btn,
+  .glass-tint {
+    transition: none;
+  }
+  .glass-btn:active,
+  .glass-tint:active {
+    transform: none;
+  }
+}
+
+/* The staff app fills the screen and scrolls inside itself, so the page behind it must not move or bounce.
+   The client booking page does not use this: it scrolls like a normal page. */
+html.app-locked,
+html.app-locked body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+@media print {
+  html.app-locked,
+  html.app-locked body {
+    overflow: visible;
+  }
+}
+
+/* Sheets. Every pop-up form is a sheet, not a boxed modal.
+   Phones: it slides up from the bottom edge and keeps the screen behind in view.
+   Wide screens: a centered sheet that rises into place. */
+.sheet {
+  --sheet-from: 1.5rem;
+  animation: sheet-in 320ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.sheet[data-state="closed"] {
+  animation: sheet-out 200ms ease-in forwards;
+}
+.sheet-backdrop {
+  animation: sheet-fade-in 240ms ease-out;
+}
+.sheet-backdrop[data-state="closed"] {
+  animation: sheet-fade-out 200ms ease-in forwards;
+}
+.sheet-grabber {
+  display: none;
+}
+@media (max-width: 767.98px) {
+  .sheet {
+    --sheet-from: 100%;
+    inset: auto 0 0 0;
+    width: 100%;
+    max-width: none;
+    max-height: 92dvh;
+    translate: none;
+    border-radius: 1.75rem 1.75rem 0 0;
+    border-bottom-width: 0;
+    padding-top: 1.75rem;
+    padding-bottom: calc(1.5rem + env(safe-area-inset-bottom));
+    overscroll-behavior: contain;
+  }
+  .sheet-grabber {
+    display: block;
+    position: absolute;
+    top: 0.5rem;
+    left: 50%;
+    width: 2.25rem;
+    height: 0.3rem;
+    translate: -50% 0;
+    border-radius: 9999px;
+    background-color: var(--muted-foreground);
+    opacity: 0.35;
+  }
+}
+/* Form pages. A form for adding or changing one thing.
+   Phones: its own full page. A back button sits at the top, the fields scroll, the buttons stay at the bottom.
+   Wide screens: a normal centered sheet. */
+.page-sheet-back {
+  display: none;
+}
+.page-sheet-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+@media (max-width: 767.98px) {
+  .sheet.page-sheet {
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    max-height: none;
+    padding: 0;
+    overflow: hidden;
+    border: 0;
+    border-radius: 0;
+    background-color: var(--background);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow: none;
+    animation: page-in 320ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+  .sheet.page-sheet[data-state="closed"] {
+    animation: page-out 200ms ease-in forwards;
+  }
+  .page-sheet > .sheet-grabber,
+  .page-sheet > .sheet-close {
+    display: none;
+  }
+  .page-sheet-head {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: calc(0.75rem + env(safe-area-inset-top)) 1rem 0.75rem;
+  }
+  .page-sheet-back {
+    display: flex;
+  }
+  .page-sheet-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0.5rem 1rem 1.5rem;
+  }
+  .page-sheet-foot {
+    flex-direction: column-reverse;
+    flex-wrap: nowrap;
+    padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--hairline);
+  }
+  .page-sheet-foot > * {
+    min-height: 2.75rem;
+  }
+
+  /* The booking form is a full page too. */
+  .sheet-page {
+    inset: 0;
+    width: 100%;
+    height: 100dvh;
+    translate: none;
+    transform: none;
+    border-radius: 0;
+    animation: page-in 320ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet-page { transition: none; }
+}
+
+/* A page comes in from the right, like the next screen in a phone app. */
+@keyframes page-in {
+  from { transform: translateX(100%); }
+}
+@keyframes page-out {
+  to { transform: translateX(100%); }
+}
+@keyframes sheet-in {
+  from { transform: translateY(var(--sheet-from)); opacity: 0.6; }
+}
+@keyframes sheet-out {
+  to { transform: translateY(var(--sheet-from)); opacity: 0; }
+}
+@keyframes sheet-fade-in {
+  from { opacity: 0; }
+}
+@keyframes sheet-fade-out {
+  to { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sheet,
+  .sheet.page-sheet,
+  .sheet-page,
+  .sheet[data-state="closed"],
+  .sheet-backdrop,
+  .sheet-backdrop[data-state="closed"] {
+    animation: none;
+  }
 }
 
 @layer base {
@@ -83,6 +471,52 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: "Inter", system-ui, -apple-system, sans-serif;
+    font-family: "Allo", system-ui, -apple-system, sans-serif;
+    font-variation-settings: "ROND" var(--type-roundness);
+    -webkit-font-smoothing: antialiased;
   }
+  /* The page is bone at the top and fades to a warm tan at the bottom.
+     A fixed layer, because iPhone Safari does not keep a fixed background. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background: linear-gradient(180deg, var(--background) 0%, var(--background) 38%, var(--wash) 100%);
+    pointer-events: none;
+  }
+  @media print {
+    body::before {
+      display: none;
+    }
+  }
+}
+
+/* iPhone: Safari zooms the page when a focused field has text smaller than
+   16px. Not in a layer, so it wins over the utility classes. */
+@media (max-width: 767px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/* Three dots that rise in turn while the assistant works. */
+.typing-dots i {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 9999px;
+  background: var(--muted-foreground);
+  opacity: 0.45;
+  animation: typing-dot 1.2s ease-in-out infinite;
+}
+.typing-dots i:nth-child(2) { animation-delay: 0.15s; }
+.typing-dots i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes typing-dot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.45; }
+  30% { transform: translateY(-0.2rem); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .typing-dots i { animation: none; }
 }

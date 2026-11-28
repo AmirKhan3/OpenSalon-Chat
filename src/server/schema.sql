@@ -1,108 +1,131 @@
--- Clients (customers who book appointments)
+-- Tolly schema for Postgres. Every statement is idempotent: this file is
+-- applied on every server start.
+
+-- Timestamps are stored as UTC text ("YYYY-MM-DD HH:MM:SS").
+CREATE OR REPLACE FUNCTION utc_now() RETURNS TEXT
+  LANGUAGE sql STABLE
+  AS $$ SELECT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') $$;
+
+CREATE OR REPLACE FUNCTION utc_today() RETURNS TEXT
+  LANGUAGE sql STABLE
+  AS $$ SELECT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD') $$;
+
+-- Clients (people who book appointments)
 CREATE TABLE IF NOT EXISTS clients (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
   email TEXT DEFAULT '',
   phone TEXT DEFAULT '',
   notes TEXT DEFAULT '',
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now'))
+  created_at TEXT DEFAULT utc_now(),
+  updated_at TEXT DEFAULT utc_now()
 );
 
--- Staff members (stylists, therapists, technicians, etc.)
+-- Staff (barbers)
 CREATE TABLE IF NOT EXISTS staff (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
   email TEXT DEFAULT '',
   phone TEXT DEFAULT '',
   title TEXT DEFAULT '',
   color TEXT NOT NULL DEFAULT '#7c3aed',
   active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT DEFAULT (datetime('now'))
+  created_at TEXT DEFAULT utc_now()
 );
 
--- Services offered (haircut, massage, manicure, etc.)
+-- Services (haircut, beard trim, ...)
 CREATE TABLE IF NOT EXISTS services (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
   description TEXT DEFAULT '',
   duration INTEGER NOT NULL DEFAULT 60,
-  price REAL NOT NULL DEFAULT 0,
+  price DOUBLE PRECISION NOT NULL DEFAULT 0,
   color TEXT NOT NULL DEFAULT '#6b7280',
   category TEXT DEFAULT '',
   active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT DEFAULT (datetime('now'))
+  created_at TEXT DEFAULT utc_now()
 );
 
 -- Appointments (bookings)
 CREATE TABLE IF NOT EXISTS appointments (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   identifier TEXT NOT NULL UNIQUE,
   client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
   staff_id INTEGER REFERENCES staff(id) ON DELETE SET NULL,
   status TEXT NOT NULL DEFAULT 'booked',
-  scheduled_date TEXT NOT NULL DEFAULT (date('now')),
+  scheduled_date TEXT NOT NULL DEFAULT utc_today(),
   start_time TEXT NOT NULL DEFAULT '09:00',
   end_time TEXT NOT NULL DEFAULT '10:00',
-  total_price REAL NOT NULL DEFAULT 0,
+  total_price DOUBLE PRECISION NOT NULL DEFAULT 0,
   notes TEXT DEFAULT '',
   is_recurring INTEGER NOT NULL DEFAULT 0,
   recurrence_interval TEXT DEFAULT '',
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now'))
+  created_at TEXT DEFAULT utc_now(),
+  updated_at TEXT DEFAULT utc_now()
 );
 
 -- Services included in an appointment (many-to-many)
 CREATE TABLE IF NOT EXISTS appointment_services (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   appointment_id INTEGER NOT NULL REFERENCES appointments(id) ON DELETE CASCADE,
   service_id INTEGER NOT NULL REFERENCES services(id) ON DELETE CASCADE,
-  price REAL NOT NULL DEFAULT 0,
+  price DOUBLE PRECISION NOT NULL DEFAULT 0,
   duration INTEGER NOT NULL DEFAULT 60
 );
 
 -- Appointment notes / activity log
 CREATE TABLE IF NOT EXISTS appointment_notes (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   appointment_id INTEGER NOT NULL REFERENCES appointments(id) ON DELETE CASCADE,
   content TEXT NOT NULL,
-  created_at TEXT DEFAULT (datetime('now'))
+  created_at TEXT DEFAULT utc_now()
 );
 
--- Blocked time slots (breaks, days off, lunch, etc.)
+-- Blocked time (breaks, days off, lunch, ...)
 CREATE TABLE IF NOT EXISTS blocked_slots (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   staff_id INTEGER NOT NULL REFERENCES staff(id) ON DELETE CASCADE,
   blocked_date TEXT NOT NULL,
   start_time TEXT NOT NULL,
   end_time TEXT NOT NULL,
   reason TEXT DEFAULT '',
-  created_at TEXT DEFAULT (datetime('now'))
+  created_at TEXT DEFAULT utc_now()
 );
 
--- Products (inventory: shampoo, creams, tools, etc.)
+-- Products (retail stock)
 CREATE TABLE IF NOT EXISTS products (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
   brand TEXT DEFAULT '',
   category TEXT DEFAULT '',
   sku TEXT DEFAULT '',
-  price REAL NOT NULL DEFAULT 0,
-  cost REAL NOT NULL DEFAULT 0,
+  price DOUBLE PRECISION NOT NULL DEFAULT 0,
+  cost DOUBLE PRECISION NOT NULL DEFAULT 0,
   stock INTEGER NOT NULL DEFAULT 0,
   low_stock_alert INTEGER NOT NULL DEFAULT 5,
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now'))
+  created_at TEXT DEFAULT utc_now(),
+  updated_at TEXT DEFAULT utc_now()
 );
 
--- Auto-incrementing identifier counter
+-- Key/value rows (appointment identifier counter)
 CREATE TABLE IF NOT EXISTS _meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
--- Seed rows (the _meta counter rows and the example staff / services /
--- clients / products) moved into the app: see src/server/seed.ts. Clawnify
--- applies this file as DDL only, so any INSERT here fails the whole deploy.
+
+-- Shop settings. Each value is JSON.
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT DEFAULT utc_now()
+);
+
+-- Columns added after the first version.
+-- public_token: the secret in the client's manage link.
+-- source: who made the booking (staff | online | chat | sms).
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS public_token TEXT;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'staff';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_appointments_public_token ON appointments(public_token);
 
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_appointments_client ON appointments(client_id);
@@ -116,3 +139,126 @@ CREATE INDEX IF NOT EXISTS idx_blocked_slots_date ON blocked_slots(blocked_date)
 CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(name);
 CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
 CREATE INDEX IF NOT EXISTS idx_services_category ON services(category);
+
+-- Pre-pay (Stripe). prepay_status: none | due | paid | refunded | refund_due | expired | void.
+-- hold_expires_at: UTC time (ISO text). A pending booking holds its time until then.
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS prepay_amount DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS prepay_status TEXT NOT NULL DEFAULT 'none';
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS hold_expires_at TEXT;
+-- When the visit last got a new date or time (UTC). Reminders never fire for a moment before it.
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS moved_at TEXT;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS stripe_session_id TEXT;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS stripe_checkout_url TEXT;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS stripe_payment_intent TEXT;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS stripe_refund_id TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_appointments_stripe_session ON appointments(stripe_session_id);
+
+-- Chat threads. kind 'client': a client talks with Tolly and the barbers.
+-- kind 'assistant': the barber's private chat with Tolly. Clients never see it.
+-- token: the secret a web chat keeps in the browser. phone: the number of an SMS thread.
+-- mode 'agent': Tolly answers. mode 'human': a barber answers and Tolly stays quiet.
+CREATE TABLE IF NOT EXISTS chat_threads (
+  id SERIAL PRIMARY KEY,
+  kind TEXT NOT NULL DEFAULT 'client',
+  channel TEXT NOT NULL DEFAULT 'web',
+  token TEXT UNIQUE,
+  phone TEXT,
+  client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+  display_name TEXT NOT NULL DEFAULT '',
+  mode TEXT NOT NULL DEFAULT 'agent',
+  needs_attention INTEGER NOT NULL DEFAULT 0,
+  staff_unread INTEGER NOT NULL DEFAULT 0,
+  last_message_at TEXT,
+  created_at TEXT DEFAULT utc_now(),
+  updated_at TEXT DEFAULT utc_now()
+);
+
+-- sender: client | agent | staff | system | note.
+-- 'note' is for staff only. Clients and the AI never see notes.
+-- delivery_status: for texts, 'sent' or 'failed: <reason>'. Empty for web chat.
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id SERIAL PRIMARY KEY,
+  thread_id INTEGER NOT NULL REFERENCES chat_threads(id) ON DELETE CASCADE,
+  sender TEXT NOT NULL,
+  body TEXT NOT NULL,
+  delivery_status TEXT NOT NULL DEFAULT '',
+  created_at TEXT DEFAULT utc_now()
+);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_thread ON chat_messages(thread_id, id);
+CREATE INDEX IF NOT EXISTS idx_chat_threads_phone ON chat_threads(phone);
+
+-- Texts (SMS).
+-- opted_out: the client texted STOP. We send this number no more texts until they text START.
+-- provider_ref: the provider's id of a text. It stops a webhook that arrives twice from being saved twice.
+ALTER TABLE chat_threads ADD COLUMN IF NOT EXISTS opted_out INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS provider_ref TEXT;
+CREATE INDEX IF NOT EXISTS idx_chat_messages_ref ON chat_messages(provider_ref);
+
+-- Automations: routines the owner (or the assistant) sets up once. The server runs them.
+-- trigger: daily | before_appointment | after_appointment | booking_created | prepay_paid | booking_cancelled | booking_moved
+-- action: text_client | agent_task
+-- created_by: system | staff | agent
+-- armed_at: when it was made, turned on, or its timing changed. It never fires for a moment before that.
+CREATE TABLE IF NOT EXISTS automations (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  trigger TEXT NOT NULL,
+  trigger_config TEXT NOT NULL DEFAULT '{}',
+  action TEXT NOT NULL,
+  action_config TEXT NOT NULL DEFAULT '{}',
+  filters TEXT NOT NULL DEFAULT '{}',
+  created_by TEXT NOT NULL DEFAULT 'staff',
+  builtin_key TEXT,
+  armed_at TEXT NOT NULL,
+  created_at TEXT DEFAULT utc_now(),
+  updated_at TEXT DEFAULT utc_now()
+);
+
+-- One row per time an automation acted. run_key is claimed BEFORE acting,
+-- so the same reminder is never sent twice.
+-- status: running | sent | done | skipped | failed
+CREATE TABLE IF NOT EXISTS automation_runs (
+  id SERIAL PRIMARY KEY,
+  automation_id INTEGER NOT NULL REFERENCES automations(id) ON DELETE CASCADE,
+  appointment_id INTEGER REFERENCES appointments(id) ON DELETE SET NULL,
+  run_key TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'running',
+  detail TEXT NOT NULL DEFAULT '',
+  created_at TEXT DEFAULT utc_now()
+);
+CREATE INDEX IF NOT EXISTS idx_automation_runs_automation ON automation_runs(automation_id, id);
+
+-- Money really taken. A refund is a row with negative amounts.
+-- kind: payment | refund. method: card_online | card_in_person | cash | other.
+-- paid_on: the shop-local date. Rows stay when a booking or client is deleted: they are proof of income.
+CREATE TABLE IF NOT EXISTS payments (
+  id SERIAL PRIMARY KEY,
+  appointment_id INTEGER REFERENCES appointments(id) ON DELETE SET NULL,
+  client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+  staff_id INTEGER REFERENCES staff(id) ON DELETE SET NULL,
+  kind TEXT NOT NULL DEFAULT 'payment',
+  method TEXT NOT NULL DEFAULT 'other',
+  amount DOUBLE PRECISION NOT NULL DEFAULT 0,
+  tip DOUBLE PRECISION NOT NULL DEFAULT 0,
+  note TEXT NOT NULL DEFAULT '',
+  paid_on TEXT NOT NULL,
+  stripe_ref TEXT,
+  created_at TEXT DEFAULT utc_now(),
+  UNIQUE (stripe_ref, kind)
+);
+CREATE INDEX IF NOT EXISTS idx_payments_paid_on ON payments(paid_on);
+CREATE INDEX IF NOT EXISTS idx_payments_appointment ON payments(appointment_id);
+
+-- calendar_token: the secret in a barber's calendar feed link.
+ALTER TABLE staff ADD COLUMN IF NOT EXISTS calendar_token TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_staff_calendar_token ON staff(calendar_token);
+
+-- Rate limits (web chat, wrong passwords). In the database, so all servers share them.
+-- key: "<limit name>:<address>". reset_at: when the window ends, in milliseconds.
+CREATE TABLE IF NOT EXISTS rate_limits (
+  key TEXT PRIMARY KEY,
+  count INTEGER NOT NULL DEFAULT 0,
+  reset_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_rate_limits_reset_at ON rate_limits(reset_at);

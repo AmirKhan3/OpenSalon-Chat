@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { toMinutes, overlaps, findConflicts, describeConflicts, type Busy } from "./scheduling.ts";
+import { toMinutes, overlaps, findConflicts, describeConflicts, type Busy } from "./scheduling.js";
 
 const appt = (start_time: string, end_time: string, label = "Jamie Rivera"): Busy =>
   ({ kind: "appointment", start_time, end_time, label });

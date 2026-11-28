@@ -4,26 +4,36 @@ import type { View } from "../types";
 export interface RouteState {
   view: View;
   id: string | null;
+  /** True when the address is "/" with nothing after it. */
+  home: boolean;
 }
 
 const VIEW_ROUTES: Record<string, View> = {
   "": "dashboard",
   "dashboard": "dashboard",
+  "inbox": "inbox",
+  "assistant": "assistant",
+  "automations": "automations",
   "calendar": "calendar",
   "appointments": "appointments",
   "clients": "clients",
   "staff": "staff",
   "services": "services",
   "products": "products",
+  "reports": "reports",
+  "settings": "settings",
+  "profile": "profile",
+  // The old address of the Profile screen.
+  "more": "profile",
 };
 
-function parseRoute(path: string): RouteState {
+export function parseRoute(path: string): RouteState {
   const clean = path.replace(/^\/+|\/+$/g, "");
   const segments = clean.split("/");
   const viewKey = segments[0] || "";
   const view = VIEW_ROUTES[viewKey] || "dashboard";
   const id = segments[1] || null;
-  return { view, id };
+  return { view, id, home: clean === "" };
 }
 
 export function useRouter() {

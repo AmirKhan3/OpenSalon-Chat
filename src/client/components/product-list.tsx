@@ -1,6 +1,6 @@
 import { useState } from "preact/hooks";
 import { useApp } from "../context";
-import { Plus, Search, Trash2, AlertTriangle, Pencil } from "lucide-preact";
+import { Plus, Search, AlertTriangle } from "lucide-preact";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,16 +9,28 @@ import { Badge } from "@/components/ui/badge";
 import { Pagination } from "./pagination";
 import { CreateProduct } from "./create-product";
 import type { Product } from "../types";
+import { RowMenu } from "./row-menu";
+import { useConfirm } from "./confirm-sheet";
 
 export function ProductList() {
   const { products, productsPag, setProductsPage, productsSearch, setProductsSearch, deleteProduct } = useApp();
   const [showCreate, setShowCreate] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [ask, sheet] = useConfirm();
+
+  const actionsFor = (p: Product) => [
+    { label: "Edit", onSelect: () => setEditingProduct(p) },
+    { label: "Delete", destructive: true, onSelect: () => ask({
+        title: `Delete ${p.name}?`,
+        text: "The product and its stock count are removed. You cannot undo this.",
+        action: "Delete product", run: () => deleteProduct(p.id),
+      }) },
+  ];
 
   return (
     <div className="space-y-4 p-4 sm:p-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">Products</h1>
+        <h1 className="text-[1.65rem] font-medium leading-tight tracking-tight">Products</h1>
         <Button size="sm" className="min-h-11 sm:min-h-0" onClick={() => setShowCreate(true)}>
           <Plus className="mr-1 h-3.5 w-3.5" /> Add Product
         </Button>
@@ -26,6 +38,7 @@ export function ProductList() {
 
       {showCreate && <CreateProduct onClose={() => setShowCreate(false)} />}
       {editingProduct && <CreateProduct product={editingProduct} onClose={() => setEditingProduct(null)} />}
+      {sheet}
 
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -47,22 +60,17 @@ export function ProductList() {
                       {[p.brand, p.category, p.sku && `SKU: ${p.sku}`].filter(Boolean).join(" · ") || "No product details"}
                     </p>
                   </div>
-                  {p.stock <= p.low_stock_alert && (
-                    <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs text-amber-700">Low stock</span>
-                  )}
+                  <div className="flex shrink-0 items-center gap-1">
+                    {p.stock <= p.low_stock_alert && (
+                      <span className="rounded-full border border-warning-border bg-warning-soft px-2 py-0.5 text-xs text-warning-foreground">Low stock</span>
+                    )}
+                    <RowMenu label={`More for ${p.name}`} actions={actionsFor(p)} className="-mr-2 -mt-2" />
+                  </div>
                 </div>
                 <div className="mt-3 grid grid-cols-3 gap-3 text-sm">
                   <div><p className="text-xs text-muted-foreground">Price</p><p className="font-medium tabular-nums">${p.price.toFixed(2)}</p></div>
                   <div><p className="text-xs text-muted-foreground">Cost</p><p className="tabular-nums">${p.cost.toFixed(2)}</p></div>
-                  <div><p className="text-xs text-muted-foreground">Stock</p><p className="flex items-center gap-1 font-medium tabular-nums">{p.stock <= p.low_stock_alert && <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />}{p.stock}</p></div>
-                </div>
-                <div className="mt-4 grid grid-cols-2 gap-2">
-                  <Button variant="outline" className="min-h-11" onClick={() => setEditingProduct(p)}>
-                    <Pencil className="mr-1.5 h-3.5 w-3.5" /> Edit
-                  </Button>
-                  <Button variant="outline" className="min-h-11 text-destructive hover:text-destructive" onClick={() => deleteProduct(p.id)}>
-                    <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete
-                  </Button>
+                  <div><p className="text-xs text-muted-foreground">Stock</p><p className="flex items-center gap-1 font-medium tabular-nums">{p.stock <= p.low_stock_alert && <AlertTriangle className="h-3.5 w-3.5 text-warning" />}{p.stock}</p></div>
                 </div>
               </div>
             ))}
@@ -99,20 +107,13 @@ export function ProductList() {
                   <TableCell className="text-center">
                     <span className="flex items-center justify-center gap-1">
                       {p.stock <= p.low_stock_alert && (
-                        <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                        <AlertTriangle className="h-3.5 w-3.5 text-warning" />
                       )}
-                      <span className={p.stock <= p.low_stock_alert ? "font-medium text-amber-600" : ""}>{p.stock}</span>
+                      <span className={p.stock <= p.low_stock_alert ? "font-medium text-warning" : ""}>{p.stock}</span>
                     </span>
                   </TableCell>
                   <TableCell>
-                    <div className="flex gap-1">
-                    <Button aria-label={`Edit ${p.name}`} variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => setEditingProduct(p)}>
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button aria-label={`Delete ${p.name}`} variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => deleteProduct(p.id)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                    </div>
+                    <RowMenu label={`More for ${p.name}`} actions={actionsFor(p)} className="h-9 w-9" />
                   </TableCell>
                 </TableRow>
               ))}

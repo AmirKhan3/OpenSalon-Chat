@@ -75,7 +75,7 @@ export function RescheduleAppointment({ appointment, onClose }: { appointment: A
           </fieldset>
           {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
           {conflicts && (
-            <div role="alert" className="space-y-1 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+            <div role="alert" className="space-y-1 rounded-md border border-warning-border bg-warning-soft p-3 text-sm">
               <p className="font-medium">{appointment.staff_name || "That staff member"} is not free then.</p>
               <ul className="text-muted-foreground">
                 {conflicts.map((conflict, index) => <li key={index}>{describeConflict(conflict)}</li>)}
