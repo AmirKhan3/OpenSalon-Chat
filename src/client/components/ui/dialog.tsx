@@ -44,7 +44,7 @@ const DialogContent = React.forwardRef<
       {/* Phones: a small bar that marks this as a sheet. */}
       <span className="sheet-grabber" aria-hidden="true" />
       {children}
-      <DialogPrimitive.Close className="absolute right-3 top-3 flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-press hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none">
+      <DialogPrimitive.Close className="sheet-close absolute right-3 top-3 flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-press hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none">
         <X className="h-5 w-5" aria-hidden="true" />
         <span className="sr-only">Close</span>
       </DialogPrimitive.Close>

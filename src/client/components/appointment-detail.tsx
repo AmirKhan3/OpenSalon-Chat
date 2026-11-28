@@ -13,6 +13,8 @@ import { conflictsFrom, conflictSentence } from "@/lib/conflicts";
 import { soloBarber } from "@/lib/solo";
 import { friendlyDate } from "@/lib/dates";
 import { formatRange } from "@/lib/calendar-slot";
+import { RowMenu } from "./row-menu";
+import { useConfirm } from "./confirm-sheet";
 
 export function AppointmentDetail() {
   const {
@@ -21,6 +23,7 @@ export function AppointmentDetail() {
   } = useApp();
   const [noteText, setNoteText] = useState("");
   const [rescheduling, setRescheduling] = useState(false);
+  const [ask, sheet] = useConfirm();
 
   if (!apt) return null;
 
@@ -53,10 +56,16 @@ export function AppointmentDetail() {
         </Button>
         <h1 className="min-w-0 flex-1 truncate text-[1.65rem] font-medium leading-tight tracking-tight">{apt.identifier}</h1>
         <StatusBadge status={apt.status} />
-        <Button variant="destructive" size="sm" className="max-md:px-0" onClick={() => deleteAppointment(apt.id)}>
-          <Trash2 className="h-4 w-4 md:mr-1 md:h-3.5 md:w-3.5" aria-hidden="true" /> <span className="max-md:sr-only">Delete</span>
-        </Button>
+        <RowMenu
+          label={`More for booking ${apt.identifier}`} className="-mr-2"
+          actions={[{ label: "Delete booking", destructive: true, onSelect: () => ask({
+            title: `Delete booking ${apt.identifier}?`,
+            text: "The booking and its notes are removed. Payments you took stay in your reports. To keep a record, set the status to Cancelled instead. You cannot undo this.",
+            action: "Delete booking", run: () => deleteAppointment(apt.id),
+          }) }]}
+        />
       </div>
+      {sheet}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
@@ -168,7 +177,7 @@ export function AppointmentDetail() {
                       <p className="text-sm">{note.content}</p>
                       <div className="mt-1 flex items-center justify-between">
                         <span className="text-xs text-muted-foreground">{new Date(note.created_at).toLocaleString()}</span>
-                        <Button variant="ghost" aria-label="Delete this note" size="icon" className="h-5 w-5 text-muted-foreground hover:text-destructive" onClick={() => deleteAppointmentNote(note.id)}>
+                        <Button variant="ghost" aria-label="Delete this note" size="icon" className="h-5 w-5 text-muted-foreground hover:text-destructive" onClick={() => ask({ title: "Delete this note?", text: "You cannot undo this.", action: "Delete note", run: () => deleteAppointmentNote(note.id) })}>
                           <Trash2 className="h-3 w-3" />
                         </Button>
                       </div>

@@ -1,15 +1,46 @@
 import type { View } from "../types";
 
-/** The five tabs in the bar at the bottom of a phone. The order is the order on screen. */
-export type TabKey = "agent" | "calendar" | "inbox" | "clients" | "more";
+/** The four tabs in the bar at the bottom of a phone. The order is the order on screen. */
+export type TabKey = "agent" | "calendar" | "inbox" | "profile";
 
 export const PHONE_TABS: { key: TabKey; path: string; label: string }[] = [
   { key: "agent", path: "/assistant", label: "Assistant" },
   { key: "calendar", path: "/calendar", label: "Calendar" },
   { key: "inbox", path: "/inbox", label: "Inbox" },
-  { key: "clients", path: "/clients", label: "Clients" },
-  { key: "more", path: "/more", label: "More" },
+  { key: "profile", path: "/profile", label: "Profile" },
 ];
+
+export interface ProfileItem { view: View; path: string; label: string }
+
+/**
+ * The rows on the Profile screen, in groups, like the Settings app on an iPhone.
+ * Each row opens its own page. Settings is not here: it has its own button at the top of the screen.
+ */
+export const PROFILE_GROUPS: ProfileItem[][] = [
+  [
+    { view: "clients", path: "/clients", label: "Clients" },
+    { view: "appointments", path: "/appointments", label: "Appointments" },
+    { view: "dashboard", path: "/dashboard", label: "Today" },
+  ],
+  [
+    { view: "services", path: "/services", label: "Services" },
+    { view: "staff", path: "/staff", label: "Staff" },
+    { view: "products", path: "/products", label: "Products" },
+  ],
+  [
+    { view: "automations", path: "/automations", label: "Automations" },
+    { view: "reports", path: "/reports", label: "Reports" },
+  ],
+];
+
+/**
+ * Where the "back" link at the top of a phone screen goes, or null when the screen has none.
+ * Pages opened from the Profile screen go back to it. Tab screens and detail pages have no link here.
+ */
+export function backFor(screen: View, hasId: boolean): { path: string; label: string } | null {
+  if (hasId || screen === "profile" || tabFor(screen) !== "profile") return null;
+  return { path: "/profile", label: "Profile" };
+}
 
 /**
  * The screen to show. On a phone the app opens on the assistant.
@@ -20,14 +51,13 @@ export function screenFor(view: View, home: boolean, isPhone: boolean): View {
   return isPhone && home && view === "dashboard" ? "assistant" : view;
 }
 
-/** The tab to light up for a screen. Screens with no tab of their own belong to "More". */
+/** The tab to light up for a screen. Screens with no tab of their own belong to "Profile". */
 export function tabFor(screen: View): TabKey {
   switch (screen) {
     case "assistant": return "agent";
     case "calendar": return "calendar";
     case "inbox": return "inbox";
-    case "clients": return "clients";
-    default: return "more";
+    default: return "profile";
   }
 }
 

@@ -22,7 +22,9 @@ const VIEW_ROUTES: Record<string, View> = {
   "products": "products",
   "reports": "reports",
   "settings": "settings",
-  "more": "more",
+  "profile": "profile",
+  // The old address of the Profile screen.
+  "more": "profile",
 };
 
 export function parseRoute(path: string): RouteState {

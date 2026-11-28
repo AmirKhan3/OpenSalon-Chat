@@ -16,7 +16,7 @@ export function AssistantPage({ onBook }: { onBook?: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
-  const end = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLDivElement>(null);
 
   const thinking = chat?.thinking ?? false;
   useEffect(() => {
@@ -36,7 +36,11 @@ export function AssistantPage({ onBook }: { onBook?: () => void }) {
   }, [thinking]);
 
   const count = chat?.messages.length ?? 0;
-  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [count, thinking]);
+  // Move only the message list to its end. Never scroll the page itself.
+  useEffect(() => {
+    const box = list.current;
+    if (box) box.scrollTop = box.scrollHeight;
+  }, [count, thinking]);
 
   const send = async (text: string) => {
     const body = text.trim();
@@ -89,7 +93,7 @@ export function AssistantPage({ onBook }: { onBook?: () => void }) {
         )}
       </div>
 
-      <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto px-4 pb-4 pt-28 md:pt-4" aria-live="polite">
+      <div ref={list} className="min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain px-4 pb-4 pt-28 md:pt-4" aria-live="polite">
         <p className="pb-2 text-center text-xs text-muted-foreground md:hidden">Only you see this chat. Clients never do.</p>
 
         {chat && !chat.configured && (
@@ -141,20 +145,19 @@ export function AssistantPage({ onBook }: { onBook?: () => void }) {
             <span className="typing-dots flex h-10 items-center gap-1 rounded-[1.35rem] rounded-bl-md bg-muted px-4" aria-hidden="true"><i /><i /><i /></span>
           </div>
         )}
-        <div ref={end} />
       </div>
 
       {error && <p role="alert" className="px-4 pb-2 text-sm text-destructive">{error}</p>}
       <form
         onSubmit={(e) => { e.preventDefault(); send(draft); }}
-        className="mx-3 mb-2 flex items-end gap-1 rounded-[1.75rem] glass p-1.5 focus-within:ring-2 focus-within:ring-ring md:mb-4"
+        className="mx-3 mb-2 flex touch-none items-end gap-1 rounded-[1.75rem] glass p-1.5 focus-within:ring-2 focus-within:ring-ring md:mb-4"
       >
         <label htmlFor="assistant-message" className="sr-only">Message to the assistant</label>
         <textarea
           id="assistant-message" rows={1} maxLength={2000} value={draft} placeholder={`Message ${name}`}
           onInput={(e) => setDraft(e.currentTarget.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(draft); } }}
-          className="max-h-40 min-h-11 flex-1 resize-none bg-transparent px-3 py-2.5 text-base placeholder:text-muted-foreground focus:outline-none"
+          className="max-h-40 min-h-11 flex-1 touch-pan-y resize-none overscroll-contain bg-transparent px-3 py-2.5 text-base placeholder:text-muted-foreground focus:outline-none"
         />
         <button
           type="submit"

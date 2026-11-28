@@ -306,3 +306,29 @@ test("a filter that is not a number, or a record that does not exist, gets 400",
   // Nothing was half-saved.
   assert.equal((await call("GET", "/api/appointments")).body.total, 0);
 });
+
+test("a barber with bookings or payments cannot be deleted, so records keep their name", async (t) => {
+  const { db, call, create } = await setup(t);
+  assert.equal((await create()).status, 201);
+
+  const blocked = await call("DELETE", "/api/staff/1");
+  assert.equal(blocked.status, 409);
+  assert.match(blocked.body.error, /Deactivate them instead/);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM staff WHERE id = 1").get() as { n: number }).n, 1);
+  assert.equal((await db.prepare("SELECT staff_id FROM appointments LIMIT 1").get() as { staff_id: number }).staff_id, 1);
+
+  // A barber nobody has booked can go.
+  assert.equal((await call("DELETE", "/api/staff/2")).status, 200);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM staff WHERE id = 2").get() as { n: number }).n, 0);
+  // Deleting one that is already gone is not an error.
+  assert.equal((await call("DELETE", "/api/staff/2")).status, 200);
+});
+
+test("the last barber cannot be deleted", async (t) => {
+  const { db, call } = await setup(t);
+  await db.prepare("DELETE FROM staff WHERE id <> 1").run();
+  const res = await call("DELETE", "/api/staff/1");
+  assert.equal(res.status, 409);
+  assert.match(res.body.error, /only barber/);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM staff").get() as { n: number }).n, 1);
+});

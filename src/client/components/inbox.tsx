@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
-import { Bot, ChevronLeft, MessageSquare, Smartphone, StickyNote, UserRound } from "lucide-preact";
+import { Bot, ChevronLeft, ListFilter, MessageSquare, Search, Smartphone, StickyNote, UserRound, X } from "lucide-preact";
 import { api } from "../api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { filterThreads } from "@/lib/confirm";
 
 export interface ChatThread {
   id: number; channel: "web" | "sms"; display_name: string; phone: string | null; client_id: number | null;
@@ -32,6 +33,14 @@ export function Inbox({ id, navigate }: { id: string | null; navigate: (to: stri
   const [list, setList] = useState<ThreadList | null>(null);
   const [error, setError] = useState<string | null>(null);
   const selected = id && /^\d+$/.test(id) ? Number(id) : null;
+  const [searching, setSearching] = useState(false);
+  const [query, setQuery] = useState("");
+  const [onlyNeedsYou, setOnlyNeedsYou] = useState(false);
+  const searchBox = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (searching) searchBox.current?.focus(); }, [searching]);
+  const shown = list ? filterThreads(list.threads, query, onlyNeedsYou) : [];
+  const waiting = list?.needs_attention ?? 0;
+  const iconButton = "relative flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground hover:bg-press active:bg-press focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
   const loadList = useCallback(async () => {
     try {
@@ -53,14 +62,51 @@ export function Inbox({ id, navigate }: { id: string | null; navigate: (to: stri
       <section aria-label="Chats" className={cn("min-h-0 w-full flex-col border-r md:flex md:w-80 md:shrink-0", selected ? "hidden" : "flex")}>
         <div className="flex items-center justify-between gap-2 border-b px-4 py-4">
           <h1 className="text-[1.65rem] font-medium leading-tight tracking-tight">Inbox</h1>
-          {list && list.needs_attention > 0 && <Badge variant="destructive">{list.needs_attention} need you</Badge>}
+          <div className="-mr-2 flex items-center">
+            <button
+              type="button" aria-label="Search chats" title="Search chats" aria-expanded={searching}
+              className={cn(iconButton, searching && "bg-press text-foreground")}
+              onClick={() => { if (searching) setQuery(""); setSearching(!searching); }}
+            >
+              <Search className="h-5 w-5" aria-hidden="true" />
+            </button>
+            <button
+              type="button" aria-pressed={onlyNeedsYou} title="Show only chats that need you"
+              aria-label={waiting > 0 ? `Show only chats that need you. ${waiting} ${waiting === 1 ? "chat needs" : "chats need"} you.` : "Show only chats that need you"}
+              className={cn(iconButton, onlyNeedsYou && "bg-primary text-primary-foreground hover:bg-primary active:bg-primary")}
+              onClick={() => setOnlyNeedsYou(!onlyNeedsYou)}
+            >
+              <ListFilter className="h-5 w-5" aria-hidden="true" />
+              {waiting > 0 && !onlyNeedsYou && <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full border-2 border-background bg-destructive" aria-hidden="true" />}
+            </button>
+          </div>
         </div>
+        {searching && (
+          <div className="relative border-b px-4 py-2">
+            <label htmlFor="inbox-search" className="sr-only">Search chats</label>
+            <Search className="pointer-events-none absolute left-7 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+            <input
+              id="inbox-search" ref={searchBox} type="search" value={query} placeholder="Name, number or message" autoComplete="off"
+              onInput={(e) => setQuery(e.currentTarget.value)}
+              onKeyDown={(e) => { if (e.key === "Escape") { setQuery(""); setSearching(false); } }}
+              className="h-11 w-full rounded-full bg-muted pl-10 pr-11 text-base placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-search-cancel-button]:hidden"
+            />
+            {query && (
+              <button type="button" aria-label="Clear search" className="absolute right-4 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => { setQuery(""); searchBox.current?.focus(); }}>
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            )}
+          </div>
+        )}
         {error && <p className="p-4 text-sm text-destructive">{error}</p>}
         <div className="min-h-0 flex-1 overflow-y-auto">
           {list && list.threads.length === 0 && (
             <p className="p-6 text-sm text-muted-foreground">No chats yet. Messages from clients show up here.</p>
           )}
-          {list?.threads.map((t) => (
+          {list && list.threads.length > 0 && shown.length === 0 && (
+            <p className="p-6 text-sm text-muted-foreground">{query.trim() ? "No chats match." : "No chats need you right now."}</p>
+          )}
+          {shown.map((t) => (
             <button
               key={t.id} onClick={() => navigate(`/inbox/${t.id}`)} aria-current={selected === t.id ? "true" : undefined}
               className={cn(
@@ -173,7 +219,6 @@ function ThreadView({ id, onBack, onChanged }: { id: number; onBack: () => void;
           <h2 className="truncate text-base font-semibold">{thread.display_name}</h2>
           <p className="truncate text-xs text-muted-foreground">
             {thread.channel === "sms" ? "Text messages" : "Web chat"}{thread.phone ? ` · ${thread.phone}` : ""}
-            {" · "}{human ? "You answer this chat" : "The assistant answers this chat"}
           </p>
         </div>
         {human ? (

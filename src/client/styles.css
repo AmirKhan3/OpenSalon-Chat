@@ -294,6 +294,20 @@
   }
 }
 
+/* The staff app fills the screen and scrolls inside itself, so the page behind it must not move or bounce.
+   The client booking page does not use this: it scrolls like a normal page. */
+html.app-locked,
+html.app-locked body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+@media print {
+  html.app-locked,
+  html.app-locked body {
+    overflow: visible;
+  }
+}
+
 /* Sheets. Every pop-up form is a sheet, not a boxed modal.
    Phones: it slides up from the bottom edge and keeps the screen behind in view.
    Wide screens: a centered sheet that rises into place. */
@@ -340,17 +354,80 @@
     opacity: 0.35;
   }
 }
-/* The booking form: a tall sheet on phones, with the page showing above it. */
+/* Form pages. A form for adding or changing one thing.
+   Phones: its own full page. A back button sits at the top, the fields scroll, the buttons stay at the bottom.
+   Wide screens: a normal centered sheet. */
+.page-sheet-back {
+  display: none;
+}
+.page-sheet-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
 @media (max-width: 767.98px) {
-  .sheet-page {
-    --sheet-from: 100%;
-    inset: auto 0 0 0;
+  .sheet.page-sheet {
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
     width: 100%;
-    height: calc(100dvh - 2.5rem - env(safe-area-inset-top));
+    max-width: none;
+    height: 100dvh;
+    max-height: none;
+    padding: 0;
+    overflow: hidden;
+    border: 0;
+    border-radius: 0;
+    background-color: var(--background);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow: none;
+    animation: page-in 320ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+  .sheet.page-sheet[data-state="closed"] {
+    animation: page-out 200ms ease-in forwards;
+  }
+  .page-sheet > .sheet-grabber,
+  .page-sheet > .sheet-close {
+    display: none;
+  }
+  .page-sheet-head {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: calc(0.75rem + env(safe-area-inset-top)) 1rem 0.75rem;
+  }
+  .page-sheet-back {
+    display: flex;
+  }
+  .page-sheet-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0.5rem 1rem 1.5rem;
+  }
+  .page-sheet-foot {
+    flex-direction: column-reverse;
+    flex-wrap: nowrap;
+    padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--hairline);
+  }
+  .page-sheet-foot > * {
+    min-height: 2.75rem;
+  }
+
+  /* The booking form is a full page too. */
+  .sheet-page {
+    inset: 0;
+    width: 100%;
+    height: 100dvh;
     translate: none;
     transform: none;
-    border-radius: 1.75rem 1.75rem 0 0;
-    animation: sheet-in 320ms cubic-bezier(0.32, 0.72, 0, 1);
+    border-radius: 0;
+    animation: page-in 320ms cubic-bezier(0.32, 0.72, 0, 1);
   }
 }
 
@@ -358,6 +435,13 @@
   .sheet-page { transition: none; }
 }
 
+/* A page comes in from the right, like the next screen in a phone app. */
+@keyframes page-in {
+  from { transform: translateX(100%); }
+}
+@keyframes page-out {
+  to { transform: translateX(100%); }
+}
 @keyframes sheet-in {
   from { transform: translateY(var(--sheet-from)); opacity: 0.6; }
 }
@@ -372,6 +456,7 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .sheet,
+  .sheet.page-sheet,
   .sheet-page,
   .sheet[data-state="closed"],
   .sheet-backdrop,

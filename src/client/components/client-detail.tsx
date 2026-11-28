@@ -1,6 +1,6 @@
 import { useState } from "preact/hooks";
 import { useApp } from "../context";
-import { ArrowLeft, Trash2, Save, Mail, Phone, Plus } from "lucide-preact";
+import { ArrowLeft, Save, Mail, Phone, Plus } from "lucide-preact";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,8 @@ import { CreateAppointment } from "./create-appointment";
 import { friendlyDate } from "@/lib/dates";
 import { formatClock } from "@/lib/calendar-slot";
 import { DEFAULT_STAFF_COLOR } from "@/lib/palette";
+import { RowMenu } from "./row-menu";
+import { useConfirm } from "./confirm-sheet";
 
 export function ClientDetail() {
   const { selectedClient: client, selectedClientAppointments: appointments, navigate, updateClient, deleteClient } = useApp();
@@ -21,6 +23,7 @@ export function ClientDetail() {
   const [phone, setPhone] = useState(client?.phone || "");
   const [notes, setNotes] = useState(client?.notes || "");
   const [showCreate, setShowCreate] = useState(false);
+  const [ask, sheet] = useConfirm();
 
   if (!client) return null;
 
@@ -40,11 +43,20 @@ export function ClientDetail() {
           <Button size="sm" className="flex-1 sm:flex-none" onClick={() => setShowCreate(true)}>
             <Plus className="mr-1 h-3.5 w-3.5" /> Book appointment
           </Button>
-          <Button variant="destructive" size="sm" className="flex-1 sm:flex-none" onClick={() => deleteClient(client.id)}>
-            <Trash2 className="mr-1 h-3.5 w-3.5" /> Delete
-          </Button>
+          <RowMenu
+            label={`More for ${client.name}`} className="-my-1"
+            actions={[{ label: "Delete client", destructive: true, onSelect: () => ask({
+              title: `Delete ${client.name} for good?`,
+              text: appointments.length > 0
+                ? `${client.name} and their ${appointments.length} ${appointments.length === 1 ? "booking" : "bookings"} are removed. Payments you took stay in your reports. You cannot undo this.`
+                : `${client.name} is removed. You cannot undo this.`,
+              action: `Delete ${client.name}`, typeToConfirm: client.name,
+              run: () => deleteClient(client.id),
+            }) }]}
+          />
         </div>
       </div>
+      {sheet}
 
       {showCreate && (
         <CreateAppointment

@@ -5,7 +5,7 @@ import { AppContext } from "./context";
 import { useAppState } from "./hooks/use-app";
 import { useRouter } from "./hooks/use-router";
 import { useIsPhone } from "./hooks/use-is-phone";
-import { screenFor } from "@/lib/phone-nav";
+import { backFor, screenFor } from "@/lib/phone-nav";
 import { Sidebar } from "./components/sidebar";
 import { Dashboard } from "./components/dashboard";
 import { CalendarView } from "./components/calendar-view";
@@ -22,7 +22,7 @@ import { AutomationsPage } from "./components/automations";
 import { AssistantPage } from "./components/assistant";
 import { ReportsPage } from "./components/reports";
 import { ErrorBanner } from "./components/error-banner";
-import { BookFab, MobileNav, MoreMenu } from "./components/mobile-nav";
+import { BackLink, BookFab, MobileNav, ProfileMenu } from "./components/mobile-nav";
 import { CreateAppointment } from "./components/create-appointment";
 
 interface AuthStatus { logged_in: boolean; login_required: boolean }
@@ -86,7 +86,8 @@ function Shell({ onLogout }: { onLogout?: () => void }) {
 
   const { view: routeView, id, home, navigate } = useRouter();
   // On a phone the app opens on the assistant. On a wide screen it opens on the dashboard.
-  const view = screenFor(routeView, home, useIsPhone());
+  const isPhone = useIsPhone();
+  const view = screenFor(routeView, home, isPhone);
   const appState = useAppState(isAgent, navigate);
 
   useEffect(() => {
@@ -102,6 +103,15 @@ function Shell({ onLogout }: { onLogout?: () => void }) {
   const [booking, setBooking] = useState(false);
   const canBook = !id && view === "dashboard";
 
+  // Pages opened from the Profile screen show a link back to it on phones.
+  const back = isPhone ? backFor(view, Boolean(id)) : null;
+
+  // The app fills the screen and scrolls inside itself. Stop the page behind it from moving or bouncing.
+  useEffect(() => {
+    document.documentElement.classList.add("app-locked");
+    return () => document.documentElement.classList.remove("app-locked");
+  }, []);
+
   const renderMain = () => {
     if (view === "appointments" && id && appState.selectedAppointment) return <AppointmentDetail />;
     if (view === "clients" && id && appState.selectedClient) return <ClientDetail />;
@@ -116,8 +126,8 @@ function Shell({ onLogout }: { onLogout?: () => void }) {
       case "products": return <ProductList />;
       case "automations": return <AutomationsPage />;
       case "reports": return <ReportsPage />;
-      case "settings": return <SettingsPage />;
-      case "more": return <MoreMenu onLogout={onLogout} />;
+      case "settings": return <SettingsPage onLogout={onLogout} />;
+      case "profile": return <ProfileMenu />;
       default: return <Dashboard />;
     }
   };
@@ -126,11 +136,14 @@ function Shell({ onLogout }: { onLogout?: () => void }) {
     <AppContext.Provider value={appState}>
       <div className="flex h-dvh flex-col overflow-hidden pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] md:flex-row print:block print:h-auto print:overflow-visible">
         <Sidebar currentView={view} onLogout={onLogout} />
-        <main className="min-h-0 min-w-0 flex-1 overflow-auto pb-[5.25rem] pt-[env(safe-area-inset-top)] md:pb-0 md:pt-0 print:overflow-visible print:p-0">
+        <main className={`min-h-0 min-w-0 flex-1 overscroll-contain ${view === "assistant" ? "overflow-hidden" : "overflow-auto"} pb-[5.25rem] pt-[env(safe-area-inset-top)] md:pb-0 md:pt-0 print:overflow-visible print:p-0`}>
           {appState.loading ? (
             <div className="flex h-full items-center justify-center text-muted-foreground">Loading...</div>
           ) : (
-            renderMain()
+            <>
+              {back && <BackLink path={back.path} label={back.label} />}
+              {renderMain()}
+            </>
           )}
         </main>
       </div>

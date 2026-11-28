@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { BlockTitle, Button, Checkbox, Link, List, ListInput, ListItem, Navbar, Page, Popup } from "konsta/react";
 import { TriangleAlert, UserRound, UserRoundPlus } from "lucide-preact";
 import { useApp } from "../context";
+import { useBackCloses } from "../hooks/use-back-closes";
 import { api } from "../api";
 import { conflictsFrom, describeConflict, type Conflict } from "@/lib/conflicts";
 import { joinName, phoneLooksRight, splitName, tidyPhone } from "@/lib/client-name";
@@ -22,6 +23,7 @@ interface Customer { id: number; name: string; phone: string }
 const value = (e: Event) => (e.target as HTMLInputElement).value;
 
 export function CreateAppointment({ onClose, defaultDate, defaultClientId, defaultStaffId, defaultStartTime }: Props) {
+  useBackCloses(onClose);
   const { addAppointment, createClient, clientLookup, staffLookup, services } = useApp();
 
   const startClient = defaultClientId ? clientLookup.find((c) => c.id === defaultClientId) : undefined;

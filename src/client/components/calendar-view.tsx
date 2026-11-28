@@ -16,6 +16,7 @@ import { downloadDaySheet } from "@/lib/day-sheet";
 import { agendaDays, CALENDAR_VIEWS, rangeLabel, SCHEDULE_DAYS, viewDays, viewStep, type CalendarViewKind } from "@/lib/calendar-views";
 import { UNASSIGNED_COLOR } from "@/lib/palette";
 import { barberChoice, soloBarber } from "@/lib/solo";
+import { useConfirm } from "./confirm-sheet";
 
 const DAY_LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
 
@@ -96,6 +97,12 @@ export function CalendarView() {
   // Phones: the month to show in the open month picker, or null when it is closed.
   const [monthShown, setMonthShown] = useState<string | null>(null);
   const [showMenu, setShowMenu] = useState(false);
+  const [ask, sheet] = useConfirm();
+  const unblock = (block: BlockedSlot) => ask({
+    title: "Remove this blocked time?",
+    text: `${block.reason || "Blocked"}, ${block.start_time} to ${block.end_time}. Clients can book this time again.`,
+    action: "Remove", run: () => deleteBlockedSlot(block.id),
+  });
   const [nowMinutes, setNowMinutes] = useState(minutesNow);
   const scroller = useRef<HTMLDivElement>(null);
   const swipeFrom = useRef<{ x: number; y: number } | null>(null);
@@ -530,7 +537,7 @@ export function CalendarView() {
                               type="button"
                               aria-label={`Remove blocked time: ${item.block.reason || "Blocked"}`}
                               className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full hover:bg-press active:bg-press"
-                              onClick={() => deleteBlockedSlot(item.block.id)}
+                              onClick={() => unblock(item.block)}
                             >
                               <X className="h-4 w-4" aria-hidden="true" />
                             </button>
@@ -644,7 +651,7 @@ export function CalendarView() {
                           type="button"
                           aria-label={`Remove blocked time: ${block.reason || "Blocked"}`}
                           className="-mr-1 -mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full hover:bg-press active:bg-press"
-                          onClick={(e) => { e.stopPropagation(); deleteBlockedSlot(block.id); }}
+                          onClick={(e) => { e.stopPropagation(); unblock(block); }}
                         >
                           <X className="h-3.5 w-3.5" aria-hidden="true" />
                         </button>
@@ -700,6 +707,7 @@ export function CalendarView() {
           <Plus className="h-6 w-6" aria-hidden="true" />
         </button>
       )}
+      {sheet}
     </div>
   );
 }

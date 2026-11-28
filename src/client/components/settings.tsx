@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
-import { ExternalLink } from "lucide-preact";
+import { ExternalLink, LogOut } from "lucide-preact";
 import { api } from "../api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -47,8 +47,25 @@ function timeZones(): string[] {
   }
 }
 
-/** Shop settings: name, time zone, address, opening hours, and the online booking rules. */
-export function SettingsPage() {
+/** The "Log out" row at the bottom of the settings page on phones. Wide screens have it in the sidebar. */
+function LogOutRow({ onLogout }: { onLogout: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onLogout}
+      className="flex min-h-[3.25rem] w-full items-center justify-center gap-2 rounded-[1.25rem] border border-hairline bg-card px-4 text-base font-medium text-destructive shadow-soft active:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"
+    >
+      <LogOut className="h-[1.15rem] w-[1.15rem]" strokeWidth={1.75} aria-hidden="true" />
+      Log out
+    </button>
+  );
+}
+
+/**
+ * Shop settings: name, time zone, address, opening hours, and the online booking rules.
+ * `onLogout` adds a "Log out" row on phones. It is missing when the app needs no login.
+ */
+export function SettingsPage({ onLogout }: { onLogout?: () => void }) {
   const [settings, setSettings] = useState<ShopSettings | null>(null);
   const [stripeConnected, setStripeConnected] = useState(false);
   const [sms, setSms] = useState<SmsInfo | null>(null);
@@ -63,7 +80,14 @@ export function SettingsPage() {
       .catch((e: Error) => setLoadError(e.message));
   }, []);
 
-  if (loadError) return <div className="p-6 text-sm text-destructive">{loadError}</div>;
+  if (loadError) {
+    return (
+      <div className="max-w-2xl space-y-4 p-4 sm:p-6">
+        <p className="text-sm text-destructive">{loadError}</p>
+        {onLogout && <LogOutRow onLogout={onLogout} />}
+      </div>
+    );
+  }
   if (!settings) return <div className="p-6 text-sm text-muted-foreground">Loading...</div>;
 
   const set = (patch: Partial<ShopSettings>) => { setSettings({ ...settings, ...patch }); setMessage(null); };
@@ -296,6 +320,8 @@ export function SettingsPage() {
         <Button type="submit" disabled={saving}>{saving ? "Saving..." : "Save settings"}</Button>
         {message && <p role="status" className={`text-sm ${message.ok ? "text-muted-foreground" : "text-destructive"}`}>{message.text}</p>}
       </div>
+
+      {onLogout && <LogOutRow onLogout={onLogout} />}
     </form>
   );
 }

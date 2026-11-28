@@ -2,7 +2,7 @@ import { useState } from "preact/hooks";
 import { useApp } from "../context";
 import { friendlyDate } from "@/lib/dates";
 import { formatClock } from "@/lib/calendar-slot";
-import { Plus, Search, Trash2 } from "lucide-preact";
+import { Plus, Search } from "lucide-preact";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,7 +17,7 @@ export function AppointmentList() {
     appointments, appointmentsPag, setAppointmentsPage,
     appointmentsSearch, setAppointmentsSearch,
     appointmentsStatusFilter, setAppointmentsStatusFilter,
-    deleteAppointment, navigate,
+    navigate,
   } = useApp();
   const [showCreate, setShowCreate] = useState(false);
 
@@ -88,14 +88,6 @@ export function AppointmentList() {
                     <span className="font-medium">${apt.total_price.toFixed(2)}</span>
                   </div>
                 </button>
-                <button
-                  type="button"
-                  aria-label={`Delete appointment ${apt.identifier}`}
-                  className="flex w-12 shrink-0 items-center justify-center border-l text-muted-foreground transition-colors hover:bg-muted/50 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                  onClick={() => deleteAppointment(apt.id)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
               </div>
             ))}
           </div>
@@ -110,13 +102,12 @@ export function AppointmentList() {
                 <TableHead className="w-28">Staff</TableHead>
                 <TableHead className="w-24">Status</TableHead>
                 <TableHead className="w-20 text-right">Price</TableHead>
-                <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {appointments.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">No appointments found</TableCell>
+                  <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">No appointments found</TableCell>
                 </TableRow>
               )}
               {appointments.map((apt) => (
@@ -133,11 +124,6 @@ export function AppointmentList() {
                   </TableCell>
                   <TableCell><StatusBadge status={apt.status} /></TableCell>
                   <TableCell className="text-right">${apt.total_price.toFixed(2)}</TableCell>
-                  <TableCell>
-                    <Button aria-label={`Delete appointment ${apt.identifier}`} variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={(e) => { e.stopPropagation(); deleteAppointment(apt.id); }}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

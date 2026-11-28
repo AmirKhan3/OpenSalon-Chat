@@ -1,15 +1,34 @@
 import { useState } from "preact/hooks";
 import { useApp } from "../context";
-import { Plus, Trash2 } from "lucide-preact";
+import { Plus } from "lucide-preact";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { CreateService } from "./create-service";
+import type { Service } from "../types";
+import { RowMenu } from "./row-menu";
+import { useConfirm } from "./confirm-sheet";
 
 export function ServiceList() {
   const { services, deleteService, updateService } = useApp();
   const [showCreate, setShowCreate] = useState(false);
+  const [ask, sheet] = useConfirm();
+
+  const actionsFor = (svc: Service) => [
+    svc.active
+      ? { label: "Turn off", onSelect: () => ask({
+          title: `Turn off ${svc.name}?`,
+          text: "Clients can no longer book it. Bookings already made stay. You can turn it on again any time.",
+          action: "Turn off", run: () => updateService(svc.id, { active: 0 }),
+        }) }
+      : { label: "Turn on", onSelect: () => { updateService(svc.id, { active: 1 }); } },
+    { label: "Delete", destructive: true, onSelect: () => ask({
+        title: `Delete ${svc.name}?`,
+        text: "The service is removed for good. To only hide it from clients, turn it off instead.",
+        action: "Delete service", run: () => deleteService(svc.id),
+      }) },
+  ];
 
   const categories = [...new Set(services.map((s) => s.category).filter(Boolean))];
 
@@ -23,6 +42,7 @@ export function ServiceList() {
       </div>
 
       {showCreate && <CreateService onClose={() => setShowCreate(false)} />}
+      {sheet}
 
       <ul className="divide-y border-y md:hidden">
         {services.length === 0 && <li className="py-8 text-center text-sm text-muted-foreground">No services yet</li>}
@@ -33,17 +53,8 @@ export function ServiceList() {
               <span className="block truncate font-medium">{svc.name}</span>
               <span className="block text-sm tabular-nums text-muted-foreground">{svc.duration} min, ${svc.price.toFixed(2)}</span>
             </span>
-            <button
-              type="button"
-              aria-pressed={!!svc.active}
-              className={`min-h-11 shrink-0 rounded-md px-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${svc.active ? "text-success" : "text-muted-foreground"}`}
-              onClick={() => updateService(svc.id, { active: svc.active ? 0 : 1 })}
-            >
-              {svc.active ? "Active" : "Inactive"}
-            </button>
-            <Button aria-label={`Delete ${svc.name}`} variant="ghost" size="icon" className="shrink-0 text-muted-foreground hover:text-destructive" onClick={() => deleteService(svc.id)}>
-              <Trash2 className="h-4 w-4" />
-            </Button>
+            <span className={`shrink-0 text-sm font-medium ${svc.active ? "text-success" : "text-muted-foreground"}`}>{svc.active ? "Active" : "Off"}</span>
+            <RowMenu label={`More for ${svc.name}`} actions={actionsFor(svc)} className="-mr-2" />
           </li>
         ))}
       </ul>
@@ -81,17 +92,10 @@ export function ServiceList() {
                   <TableCell className="text-center">{svc.duration} min</TableCell>
                   <TableCell className="text-right font-medium">${svc.price.toFixed(2)}</TableCell>
                   <TableCell>
-                    <button
-                      className={`text-xs font-medium ${svc.active ? "text-success" : "text-muted-foreground"}`}
-                      onClick={() => updateService(svc.id, { active: svc.active ? 0 : 1 })}
-                    >
-                      {svc.active ? "Active" : "Inactive"}
-                    </button>
+                    <span className={`text-xs font-medium ${svc.active ? "text-success" : "text-muted-foreground"}`}>{svc.active ? "Active" : "Off"}</span>
                   </TableCell>
                   <TableCell>
-                    <Button aria-label={`Delete ${svc.name}`} variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => deleteService(svc.id)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    <RowMenu label={`More for ${svc.name}`} actions={actionsFor(svc)} className="h-9 w-9" />
                   </TableCell>
                 </TableRow>
               ))}

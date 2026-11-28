@@ -4,7 +4,7 @@ import { api, ApiError } from "../api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { FormPage } from "./form-page";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -302,11 +302,17 @@ function Editor({ initial, placeholders, assistantReady, staff, services, onClos
   });
 
   return (
-    <Dialog open onOpenChange={(open: boolean) => { if (!open) onClose(); }}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
-        <DialogTitle>{d.id === null ? "New automation" : "Edit automation"}</DialogTitle>
-        <DialogDescription>Choose when it runs, what it does, and for which visits.</DialogDescription>
-
+    <FormPage
+      title={d.id === null ? "New automation" : "Edit automation"}
+      description="Choose when it runs, what it does, and for which visits."
+      onClose={onClose}
+      className="max-h-[90dvh] sm:max-w-xl"
+      footer={<>
+        {d.id !== null && <Button type="button" variant="ghost" className="text-destructive sm:mr-auto" disabled={busy} onClick={() => setAsking(true)}>Delete</Button>}
+        <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+        <Button type="button" disabled={busy} onClick={save}>{busy ? "Saving…" : "Save"}</Button>
+      </>}
+    >
         <div className="space-y-6">
           <div className="space-y-2">
             <Label htmlFor="auto-name">Name</Label>
@@ -459,13 +465,6 @@ function Editor({ initial, placeholders, assistantReady, staff, services, onClos
           {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
           {note && <p role="status" className="text-sm text-muted-foreground">{note}</p>}
 
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            {d.id !== null ? <Button type="button" variant="ghost" className="text-destructive" disabled={busy} onClick={() => setAsking(true)}>Delete</Button> : <span />}
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-              <Button type="button" disabled={busy} onClick={save}>{busy ? "Saving…" : "Save"}</Button>
-            </div>
-          </div>
         </div>
         <ConfirmSheet
           open={asking}
@@ -475,7 +474,6 @@ function Editor({ initial, placeholders, assistantReady, staff, services, onClos
           onConfirm={remove}
           onCancel={() => setAsking(false)}
         />
-      </DialogContent>
-    </Dialog>
+    </FormPage>
   );
 }

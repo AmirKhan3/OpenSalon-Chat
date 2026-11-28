@@ -947,11 +947,28 @@ const deleteStaff = createRoute({
   method: "delete",
   path: "/api/staff/{id}",
   request: { params: IdParam },
-  responses: { 200: { description: "Deleted", content: { "application/json": { schema: OkSchema } } } },
+  responses: {
+    200: { description: "Deleted", content: { "application/json": { schema: OkSchema } } },
+    409: { description: "This barber cannot be deleted", content: { "application/json": { schema: z.object({ error: z.string() }) } } },
+  },
 });
 
 app.openapi(deleteStaff, async (c) => {
   const id = Number(c.req.valid("param").id);
+  const member = await get<{ name: string }>("SELECT name FROM staff WHERE id = ?", [id]);
+  if (!member) return c.json({ ok: true }, 200);
+  // Bookings and payments must keep their barber's name, for reports and taxes.
+  const used = await get<{ n: number }>(
+    `SELECT (SELECT COUNT(*) FROM appointments WHERE staff_id = ?)::int + (SELECT COUNT(*) FROM payments WHERE staff_id = ?)::int AS n`,
+    [id, id],
+  );
+  if (used && used.n > 0) {
+    return c.json({ error: `${member.name} has bookings or payments. Deactivate them instead. Your records stay whole.` }, 409);
+  }
+  const others = await get<{ n: number }>("SELECT COUNT(*)::int AS n FROM staff WHERE id <> ?", [id]);
+  if (!others || others.n === 0) {
+    return c.json({ error: "This is your only barber. Add another barber before you delete this one." }, 409);
+  }
   await run("DELETE FROM staff WHERE id = ?", [id]);
   return c.json({ ok: true }, 200);
 });
